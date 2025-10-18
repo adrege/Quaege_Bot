@@ -2,7 +2,6 @@ import sys
 from bs4 import BeautifulSoup
 import re
 import os
-from pathlib import Path
 
 # Bestand inlezen
 # with open("boekhouding 24-25.html", "r", encoding="utf-8") as f:
@@ -11,11 +10,6 @@ from pathlib import Path
 if len(sys.argv) < 2:
 	print("Usage: python export_html.py <input_file>")
 	sys.exit(1)
-
-if getattr(sys, "frozen", False):
-	BASE_DIR = Path(os.path.dirname(sys.executable))
-else:
-	BASE_DIR = Path(__file__).resolve().parent.parent
 
 f = sys.argv[1]
 with open(f, "r", encoding="utf-8") as file:
@@ -105,8 +99,7 @@ if soup.head.style:
     soup.head.style.replace_with(BeautifulSoup(custom_css, "html.parser"))
 
 # Output folder
-out_dir = BASE_DIR / "rekeningen_split"
-os.makedirs(out_dir, exist_ok=True)
+os.makedirs("rekeningen_split", exist_ok=True)
 
 # Zoek alle tabellen met id=Table_AccountCard_...
 tables = soup.find_all("table", id=re.compile(r"^Table_AccountCard_"))
@@ -129,8 +122,8 @@ for table in tables:
 </body></html>"""
 
     # Opslaan
-	bestand_naam = out_dir / f"Rekening_{rekening_code}.html"
-	with open(str(bestand_naam), "w", encoding="utf-8") as f_out:
+    bestand_naam = f"rekeningen_split/Rekening_{rekening_code}.html"
+    with open(bestand_naam, "w", encoding="utf-8") as f_out:
         f_out.write(sub_html)
 
-	print(f"Rekening {rekening_code} geëxporteerd naar {bestand_naam}")
+    print(f"Rekening {rekening_code} geëxporteerd naar {bestand_naam}")

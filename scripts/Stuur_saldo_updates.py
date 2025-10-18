@@ -10,7 +10,6 @@ from email.mime.application import MIMEApplication
 import sys
 import argparse
 from pathlib import Path
-import json
 
 # Pad naar HTML-bestanden en CSV
 # Use absolute paths so the script can be run from anywhere
@@ -24,21 +23,8 @@ if str(BASE_DIR) not in sys.path:
 
 import config
 
-def _load_settings():
-    """Load settings.json from project root if present."""
-    settings_path = BASE_DIR / "settings.json"
-    if settings_path.exists():
-        try:
-            with open(settings_path, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception:
-            pass
-    return {}
-
-
 def get_csv_path():
-    settings = _load_settings()
-    csv_from_config = settings.get("csv_path") or getattr(config, "CSV_PAD", None)
+    csv_from_config = getattr(config, "CSV_PAD", None)
     if csv_from_config:
         cfg = os.path.expandvars(os.path.expanduser(csv_from_config))
         if os.path.exists(cfg):
@@ -51,10 +37,6 @@ def get_csv_path():
     return DEFAULT_CSV_PAD
 
 def get_betaal_link():
-    settings = _load_settings()
-    if settings.get("betaal_link"):
-        print("betaal_link loaded from settings.json")
-        return settings["betaal_link"]
     if hasattr(config, "BETAAL_LINK") and getattr(config, "BETAAL_LINK"):
         print("betaal_link loaded from config.BETAAL_LINK")
         return getattr(config, "BETAAL_LINK")
