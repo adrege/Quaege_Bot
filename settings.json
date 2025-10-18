@@ -1,8 +1,6 @@
 {
-    "csv_path": "C:/Users/20233963/Documents/Quaege/Automatisch_rijen_exporten/scripts/Ledenadministratie - Leden.csv",
-    "link": "https://diensten.snsbank.nl/online/betaalverzoek/#/v2/13f4b9a7-1314-4655-93f6-704f7bfcc383/9QcAQvwU8RRMuWoQtH6LjbyBCiX5FLXZ",
+    "csv_path": "",
     "text": "Dit veld word niet meer gebruikt",
-    "betaal_link": "https://diensten.snsbank.nl/online/betaalverzoek/#/v2/13f4b9a7-1314-4655-93f6-704f7bfcc383/9QcAQvwU8RRMuWoQtH6LjbyBCiX5FLXZ",
-    "eigen email": "",
-    "eigen_email": "iemand@adrege.nl"
+    "betaal_link": "",
+    "eigen_email": ""
 }
