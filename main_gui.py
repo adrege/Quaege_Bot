@@ -7,7 +7,12 @@ import json
 import re
 
 # ---- Paths ----
-BASE_DIR = os.path.dirname(__file__)
+# When frozen with PyInstaller, use the executable's directory
+if getattr(sys, 'frozen', False):
+    BASE_DIR = os.path.dirname(sys.executable)
+else:
+    BASE_DIR = os.path.dirname(__file__)
+
 SCRIPTS_DIR = os.path.join(BASE_DIR, "scripts")
 CONFIG_PATH = os.path.join(BASE_DIR, "config.py")
 SETTINGS_JSON = os.path.join(BASE_DIR, "settings.json")
@@ -116,12 +121,22 @@ class ScriptRunnerApp:
             tool["file_var"].set(filename)
 
     def run_script(self, tool):
-        script_path = os.path.join(SCRIPTS_DIR, tool["script"])
-        if not os.path.exists(script_path):
-            messagebox.showerror("Error", f"Script not found:\n{script_path}")
-            return
-
-        args = [sys.executable, script_path]
+        # When frozen, call the .exe; when running from source, call Python script
+        if getattr(sys, 'frozen', False):
+            # Running as exe: look for sibling .exe files
+            script_exe = os.path.join(BASE_DIR, tool["script"].replace(".py", ".exe"))
+            if not os.path.exists(script_exe):
+                messagebox.showerror("Error", f"Executable not found:\n{script_exe}")
+                return
+            args = [script_exe]
+        else:
+            # Running from source
+            script_path = os.path.join(SCRIPTS_DIR, tool["script"])
+            if not os.path.exists(script_path):
+                messagebox.showerror("Error", f"Script not found:\n{script_path}")
+                return
+            args = [sys.executable, script_path]
+        
         if tool["needs_file"]:
             file_path = tool["file_var"].get()
             if not file_path:
@@ -140,7 +155,8 @@ class ScriptRunnerApp:
             
             if is_test_mail or is_bulk_mail:
                 dry_run_args = args + ["--dry-run"]
-                preview = subprocess.run(dry_run_args, capture_output=True, text=True)
+                # Set cwd to BASE_DIR so scripts find resources
+                preview = subprocess.run(dry_run_args, capture_output=True, text=True, cwd=BASE_DIR)
                 preview_output = (preview.stdout or "").strip()
                 preview_error = (preview.stderr or "").strip()
                 # Show preview in log
@@ -165,7 +181,7 @@ class ScriptRunnerApp:
                     return
 
             # Run the actual script
-            result = subprocess.run(args, capture_output=True, text=True)
+            result = subprocess.run(args, capture_output=True, text=True, cwd=BASE_DIR)
             output = result.stdout.strip() or "(no output)"
             error = result.stderr.strip()
             self.log_box.insert(tk.END, f"\n> {tool['name']} executed\n{output}\n", "output")

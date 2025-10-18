@@ -1,0 +1,24 @@
+# Quaege Bot - Python Dependencies
+# Install all with: pip install -r requirements.txt
+
+# Core data processing
+pandas>=2.0.0
+openpyxl>=3.0.0
+
+# HTML parsing
+beautifulsoup4>=4.12.0
+lxml>=4.9.0
+
+# PDF handling
+pypdf>=3.0.0
+
+# Build tool (only needed for creating executables)
+pyinstaller>=6.0.0
+
+# Email (standard library, listed for reference)
+# - smtplib
+# - imaplib
+# - email.mime.*
+
+# GUI (standard library)
+# - tkinter
