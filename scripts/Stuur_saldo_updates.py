@@ -43,7 +43,7 @@ def get_betaal_link():
     if hasattr(config, "betaal_link") and getattr(config, "betaal_link"):
         print("betaal_link loaded from config.betaal_link")
         return getattr(config, "betaal_link")
-    fallback = "https://diensten.snsbank.nl/online/betaalverzoek/#/v2/13f4b9a7-1314-4655-93f6-704f7bfcc383/9QcAQvwU8RRMuWoQtH6LjbyBCiX5FLXZ"
+    fallback = "Er is iets misgegaan bij het laden van de betaal link. Graag gebruik maken van een overboeking."
     print("Warning: betaal_link not set in config; using fallback default. Update config.BETAAL_LINK in settings.")
     return fallback
 

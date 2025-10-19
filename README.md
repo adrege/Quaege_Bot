@@ -253,10 +253,9 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 ## 👤 Author
 
 **Olivier van Doorn**  
-*Quaegé der Demosdispuut Adregé*
+*Quaegé 2025 der Demosdispuut Adregé*
 
-📧 quaege@adrege.nl  
-📱 06-11071432
+
 
 ---
 
