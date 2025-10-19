@@ -8,6 +8,33 @@ from pypdf import PdfReader
 import re
 from datetime import datetime
 import os
+import sys
+from pathlib import Path
+
+# Ensure we can import the top-level config.py when running from the scripts folder
+BASE_DIR = Path(__file__).resolve().parent.parent
+if str(BASE_DIR) not in sys.path:
+    sys.path.insert(0, str(BASE_DIR))
+
+import config
+
+# Default CSV lives in the scripts folder
+DEFAULT_CSV_PAD = str(Path(__file__).resolve().parent / "Ledenadministratie - Leden.csv")
+
+def get_csv_path():
+    """Prefer CSV path from config (CSV_PAD), else fall back to default in scripts folder."""
+    csv_from_config = getattr(config, "CSV_PAD", None)
+    if csv_from_config:
+        # Expand ~ and env vars and normalize
+        cfg = os.path.expandvars(os.path.expanduser(csv_from_config))
+        if os.path.exists(cfg):
+            print(f"CSV path from config: {cfg}")
+            return cfg
+        else:
+            print(f"Warning: CSV path in config not found: {cfg}; falling back to default: {DEFAULT_CSV_PAD}")
+    else:
+        print(f"No CSV_PAD in config; using default: {DEFAULT_CSV_PAD}")
+    return DEFAULT_CSV_PAD
 
 class TransactionProcessor:
     def __init__(self, pdf_path, csv_path):
@@ -233,17 +260,15 @@ class TransactionProcessor:
 
 def main():
     """Hoofdfunctie voor standalone gebruik"""
-    import sys
-    
     if len(sys.argv) < 2:
         print("Gebruik: python generate_transactions.py <pdf_path> [csv_path] [output_path]")
         print("\nStandaard waarden:")
-        print("  csv_path: scripts/Ledenadministratie - Leden.csv")
+        print(f"  csv_path: {DEFAULT_CSV_PAD}")
         print("  output_path: transacties_output.xlsx")
         return
     
     pdf_path = sys.argv[1]
-    csv_path = sys.argv[2] if len(sys.argv) > 2 else "scripts/Ledenadministratie - Leden.csv"
+    csv_path = sys.argv[2] if len(sys.argv) > 2 else get_csv_path()
     output_path = sys.argv[3] if len(sys.argv) > 3 else "transacties_output.xlsx"
     
     # Controleer of bestanden bestaan

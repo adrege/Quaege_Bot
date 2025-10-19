@@ -3,3 +3,5 @@ settings.json
 dist
 build
 myConfig.py
+__pycache__
+*.pyc
