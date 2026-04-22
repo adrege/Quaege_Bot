@@ -96,7 +96,7 @@ def hoofdprogramma(dry_run=False):
     csv_pad = get_csv_path()
     leden = lees_csv(csv_pad)
     betaal_link = get_betaal_link()
-    onderwerp = getattr(config, "EMAIL_SUBJECT", "Adrege Saldo Update")
+    onderwerp = getattr(config, "EMAIL_SUBJECT", "") or "Adrege Saldo Update"
 
     to_send = []
     for lid in leden:
