@@ -16,12 +16,14 @@ else:
 SCRIPTS_DIR = os.path.join(BASE_DIR, "scripts")
 CONFIG_PATH = os.path.join(BASE_DIR, "config.py")
 SETTINGS_JSON = os.path.join(BASE_DIR, "settings.json")
+VENV_PYTHON = os.path.join(BASE_DIR, "quaege tools.venv", "Scripts", "python.exe")
 
 # ---- Default settings ----
 DEFAULT_SETTINGS = {
     "csv_path": "",
     "betaal_link": "",
     "text": "",
+    "email_subject": "",
     "eigen_email": ""
 }
 
@@ -120,6 +122,15 @@ class ScriptRunnerApp:
         if filename:
             tool["file_var"].set(filename)
 
+    def get_script_runner(self):
+        if getattr(sys, 'frozen', False):
+            return None
+
+        if os.path.exists(VENV_PYTHON):
+            return VENV_PYTHON
+
+        return sys.executable
+
     def run_script(self, tool):
         # When frozen, call the .exe; when running from source, call Python script
         if getattr(sys, 'frozen', False):
@@ -135,7 +146,7 @@ class ScriptRunnerApp:
             if not os.path.exists(script_path):
                 messagebox.showerror("Error", f"Script not found:\n{script_path}")
                 return
-            args = [sys.executable, script_path]
+            args = [self.get_script_runner(), script_path]
         
         if tool["needs_file"]:
             file_path = tool["file_var"].get()
@@ -221,14 +232,19 @@ class ScriptRunnerApp:
         self.text_box.insert("1.0", self.settings["text"])
         self.text_box.grid(row=2, column=1, padx=5, pady=5)
 
+        # Email Subject
+        tk.Label(frm, text="E-mail onderwerp (stored in config.py):").grid(row=3, column=0, sticky="w", pady=5)
+        self.subject_var = tk.StringVar(value=self.settings.get("email_subject", ""))
+        tk.Entry(frm, textvariable=self.subject_var, width=45).grid(row=3, column=1, padx=5, pady=5)
+
         #test email
-        tk.Label(frm, text="Je eigen Adrege e-mailadres (voor test e-mail):").grid(row=3, column=0, sticky="w", pady=5)
+        tk.Label(frm, text="Je eigen Adrege e-mailadres (voor test e-mail):").grid(row=4, column=0, sticky="w", pady=5)
         self.email_var = tk.StringVar(value=self.settings.get("eigen_email", ""))
-        tk.Entry(frm, textvariable=self.email_var, width=45).grid(row=3, column=1, padx=5, pady=5)
+        tk.Entry(frm, textvariable=self.email_var, width=45).grid(row=4, column=1, padx=5, pady=5)
 
         # Save button
         save_btn = tk.Button(frm, text="💾 Save Settings", command=self.save_all_settings)
-        save_btn.grid(row=6, column=0, pady=15, sticky="e")
+        save_btn.grid(row=5, column=0, pady=15, sticky="e")
 
     def browse_csv(self):
         filename = filedialog.askopenfilename(title="Select CSV file", filetypes=[("CSV Files", "*.csv")])
@@ -239,17 +255,20 @@ class ScriptRunnerApp:
         new_csv = self.csv_var.get().strip()
         new_link = self.link_var.get().strip()
         new_text = self.text_box.get("1.0", "end").strip()
+        new_subject = self.subject_var.get().strip()
         new_email = self.email_var.get().strip()
 
         self.settings["csv_path"] = new_csv
         self.settings["betaal_link"] = new_link
         self.settings["text"] = new_text
+        self.settings["email_subject"] = new_subject
         self.settings["eigen_email"] = new_email
 
         save_settings(self.settings)
         update_config_variable("CSV_PAD", new_csv)
         update_config_variable("BETAAL_LINK", new_link)
         update_config_variable("TEXT_NOTE", new_text)
+        update_config_variable("EMAIL_SUBJECT", new_subject)
         update_config_variable("test_email", new_email)
 
         messagebox.showinfo("Saved", "Settings updated successfully!")

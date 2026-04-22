@@ -5,3 +5,5 @@ build
 myConfig.py
 __pycache__
 *.pyc
+test.py
+mySettings.json
