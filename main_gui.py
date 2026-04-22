@@ -16,8 +16,25 @@ else:
 SCRIPTS_DIR = os.path.join(BASE_DIR, "scripts")
 CONFIG_PATH = os.path.join(BASE_DIR, "config.py")
 SETTINGS_JSON = os.path.join(BASE_DIR, "settings.json")
-VENV_PYTHON = os.path.join(BASE_DIR, "quaege tools.venv", "Scripts", "python.exe")
 
+def get_venv_python():
+    override = os.environ.get("VENV_PYTHON")
+    if override:
+        return override
+
+    venv_dir = os.path.join(BASE_DIR, "quaege tools.venv")
+    candidates = [
+        os.path.join(venv_dir, "Scripts", "python.exe"),
+        os.path.join(venv_dir, "bin", "python"),
+    ]
+
+    for candidate in candidates:
+        if os.path.exists(candidate):
+            return candidate
+
+    return candidates[0] if os.name == "nt" else candidates[1]
+
+VENV_PYTHON = get_venv_python()
 # ---- Default settings ----
 DEFAULT_SETTINGS = {
     "csv_path": "",
