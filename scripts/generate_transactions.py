@@ -4,7 +4,8 @@ Genereert Excel output met spaar- en regesbijdragen.
 """
 
 import pandas as pd
-from pypdf import PdfReader
+import pdfplumber
+import csv
 import re
 from datetime import datetime
 import os
@@ -62,68 +63,114 @@ class TransactionProcessor:
         print(f"Geladen: {len(self.members)} leden uit CSV")
         return self.members
     
-    def extract_transactions_from_pdf(self):
-        """Extraheer transacties uit PDF"""
-        reader = PdfReader(self.pdf_path)
-        all_text = ""
-        
-        # Lees alle pagina's
-        for page in reader.pages:
-            all_text += page.extract_text() + "\n"
-        
-        lines = all_text.split('\n')
+    def _normalize_amount(self, amount_text):
+        """Converteer bedrag met komma-notatie naar float."""
+        return float(amount_text.replace('.', '').replace(',', '.'))
+
+    def get_intermediate_csv_path(self, output_path=None):
+        """Maak een duidelijke naam voor de tussen-CSV met ruwe transacties."""
+        pdf_stem = Path(self.pdf_path).stem
+        file_name = f"{pdf_stem}_ruwe_transacties.csv"
+
+        if output_path:
+            output_dir = Path(output_path).parent
+        else:
+            output_dir = Path(self.pdf_path).parent
+
+        return str(output_dir / file_name)
+
+    def extract_from_text(self, output_csv):
+        """Extraheer transacties uit PDF tekst naar tussen-CSV."""
         transactions = []
-        
-        # Patronen voor transactie detectie
-        # Zoek naar regels met datum (DD-MM-YYYY of DD/MM/YYYY)
-        date_pattern = r'(\d{2}[-/]\d{2}[-/]\d{4})'
-        amount_pattern = r'[+-]?\s*€?\s*(\d{1,3}(?:\.\d{3})*(?:,\d{2}))'
-        
-        i = 0
-        while i < len(lines):
-            line = lines[i].strip()
-            
-            # Zoek naar datum in de regel
-            date_match = re.search(date_pattern, line)
-            if date_match:
-                date_str = date_match.group(1)
-                
-                # Probeer transactie informatie te extraheren
-                # Meestal staan naam en bedrag op dezelfde of volgende regel
-                description = line
-                amount = None
-                
-                # Zoek naar bedrag in huidige en volgende regels
-                for j in range(i, min(i+5, len(lines))):
-                    amount_match = re.search(amount_pattern, lines[j])
-                    if amount_match:
-                        amount_str = amount_match.group(1).replace('.', '').replace(',', '.')
-                        amount = float(amount_str)
-                        # Bepaal teken op basis van eerste regel (Bij/Af)
-                        header_line = lines[i]
-                        if re.search(r'\bAf\b', header_line):
-                            amount = -abs(amount)
-                        elif re.search(r'\bBij\b', header_line):
-                            amount = abs(amount)
-                        else:
-                            # fallback: positief laten (we filteren later toch op > 0)
-                            amount = abs(amount)
-                        
-                        # Verzamel beschrijving uit meerdere regels
-                        description = ' '.join(lines[i:j+1])
-                        break
-                
-                if amount is not None and amount > 0:  # Alleen inkomende transacties
-                    transactions.append({
-                        'date': date_str,
-                        'description': description,
-                        'amount': amount,
-                        'raw_text': description
-                    })
-            
-            i += 1
-        
-        print(f"Gevonden: {len(transactions)} inkomende transacties in PDF")
+
+        tx_pattern = re.compile(
+            r"^(?P<datum>\d{2}[-/]\d{2}[-/]\d{4})\s+"
+            r"(?P<bij_af>Bij|Af)\s+"
+            r"(?:EUR\s+|€\s*)?"
+            r"(?P<bedrag>-?\d{1,3}(?:\.\d{3})*,\d{2})"
+            r"\s*(?P<omschrijving>.*)$"
+        )
+
+        pdf_file = Path(self.pdf_path)
+        with pdfplumber.open(str(pdf_file)) as pdf:
+            total_pages = len(pdf.pages)
+            for page_index, page in enumerate(pdf.pages, start=1):
+                print(f"Processing page {page_index}/{total_pages}...")
+                text = page.extract_text()
+                if not text:
+                    continue
+
+                lines = text.split('\n')
+                current_row = None
+
+                for line in lines:
+                    line = line.strip()
+                    if not line:
+                        continue
+
+                    match = tx_pattern.match(line)
+                    if match:
+                        if current_row:
+                            transactions.append(current_row)
+
+                        current_row = [
+                            match.group("datum"),
+                            match.group("bij_af"),
+                            match.group("bedrag"),
+                            match.group("omschrijving").strip(),
+                        ]
+                    elif current_row:
+                        # Voeg vervolgregels toe aan meerregelige omschrijvingen.
+                        current_row[3] += " " + line
+
+                if current_row:
+                    transactions.append(current_row)
+
+        output_path = Path(output_csv)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(output_path, mode='w', newline='', encoding='utf-8') as file:
+            writer = csv.writer(file)
+            writer.writerow(["Datum", "Bij/Af", "Bedrag", "Omschrijving"])
+            writer.writerows(transactions)
+
+        print(f"Extractie voltooid. {len(transactions)} rijen opgeslagen in: {output_csv}")
+        return output_csv
+
+    def load_transactions_from_csv(self, extracted_csv_path):
+        """Laad tussen-CSV en zet om naar intern transactieformaat."""
+        transactions = []
+        df = pd.read_csv(extracted_csv_path)
+
+        for _, row in df.iterrows():
+            bij_af = str(row.get('Bij/Af', '')).strip()
+            if bij_af != 'Bij':
+                continue
+
+            bedrag = str(row.get('Bedrag', '')).strip()
+            if not bedrag:
+                continue
+
+            try:
+                amount = self._normalize_amount(bedrag)
+            except ValueError:
+                continue
+
+            if amount <= 0:
+                continue
+
+            date_str = str(row.get('Datum', '')).strip()
+            description = str(row.get('Omschrijving', '')).strip()
+            if not date_str or not description:
+                continue
+
+            transactions.append({
+                'date': date_str,
+                'description': description,
+                'amount': amount,
+                'raw_text': description
+            })
+
+        print(f"Gevonden: {len(transactions)} inkomende transacties in tussen-CSV")
         return transactions
     
     def find_member_in_transaction(self, description):
@@ -137,13 +184,19 @@ class TransactionProcessor:
         
         return None
     
-    def process_transactions(self):
-        """Verwerk alle transacties en match met leden"""
+    def process_transactions(self, output_path=None, extracted_csv_path=None):
+        """Verwerk alle transacties via tussen-CSV en match met leden."""
         # Laad leden
         self.load_members()
-        
-        # Extraheer transacties
-        transactions = self.extract_transactions_from_pdf()
+
+        if not extracted_csv_path:
+            extracted_csv_path = self.get_intermediate_csv_path(output_path)
+
+        # Stap 1: PDF naar tussen-CSV
+        self.extract_from_text(extracted_csv_path)
+
+        # Stap 2: Tussen-CSV naar intern formaat
+        transactions = self.load_transactions_from_csv(extracted_csv_path)
         
         # Bepaal maand/jaar voor document naam op basis van transactiedata
         if transactions:
@@ -282,7 +335,7 @@ def main():
     
     # Verwerk transacties
     processor = TransactionProcessor(pdf_path, csv_path)
-    results = processor.process_transactions()
+    results = processor.process_transactions(output_path=output_path)
     
     if results:
         # Exporteer naar beide formaten; laat export functies extensies bepalen

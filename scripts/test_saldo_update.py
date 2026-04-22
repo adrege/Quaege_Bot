@@ -46,14 +46,7 @@ def lees_csv(pad):
         return list(reader)
 
 def genereer_dynamische_tekst(voornaam, betaal_link):
-    return f"""
-        <p>Hoi lieve {voornaam},</p>
-        <p>Bijgevoegd vind je jouw saldo-update van het afgelopen kwartiel.</p>
-        <p>Mocht je een negatief saldo hebben, dan verzoek ik je graag om het openstaande bedrag over te maken via onderstaand betaalverzoek:</p>
-        <p><a href="{betaal_link}">{betaal_link}</a></p>
-        <p>En oja, check ook even je wbw-saldo! Het is fijn als de verschillen hier niet te groot zijn :)</p>
-        <p>Bij vragen, let met know!</p>
-    """
+    return config.genereer_dynamische_tekst(voornaam, betaal_link)
 
 def stuur_mail(ontvanger_email, onderwerp, html_bericht, bijlage_pad):
     msg = MIMEMultipart('related')
@@ -118,7 +111,7 @@ def main(dry_run: bool = False):
     csv_pad = get_csv_path()
     leden = lees_csv(csv_pad)
     betaal_link = _get_betaal_link()
-    onderwerp = "Testmail: Adrege Saldo Update"
+    onderwerp = getattr(config, "EMAIL_SUBJECT", "Adrege Saldo Update")
 
     test_lid = next((lid for lid in leden if lid["Emailadres"].strip().lower() == config.test_email.lower()), None)
 

@@ -11,6 +11,7 @@ lxml>=4.9.0
 
 # PDF handling
 pypdf>=3.0.0
+pdfplumber>=0.11.0
 
 # Build tool (only needed for creating executables)
 pyinstaller>=6.0.0
