@@ -1,6 +1,7 @@
 {
-    "csv_path": "",
-    "text": "Dit veld word niet meer gebruikt",
+    "csv_path": "Ledenadmi.csv",
+    "text": "Stukje tekst dat in de email moet komen te staan",
     "betaal_link": "",
-    "eigen_email": ""
+    "eigen_email": "your_email@adrege.nl",
+    "email_subject": "Subject of email"
 }
