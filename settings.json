@@ -1,7 +1,7 @@
 {
-    "csv_path": "Ledenadmi.csv",
+    "csv_path": "C:/Users/20233963/Documents/Quaege/Ledenadministratie - Leden.csv",
     "text": "Stukje tekst dat in de email moet komen te staan",
     "betaal_link": "",
-    "eigen_email": "your_email@adrege.nl",
-    "email_subject": "Subject of email"
+    "eigen_email": "flo@adrege.nl",
+    "email_subject": "Hoi Flo"
 }

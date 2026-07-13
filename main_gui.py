@@ -92,7 +92,7 @@ TOOLS = [
 class ScriptRunnerApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("My Python Tools")
+        self.root.title("Quaegé bot")
         self.root.geometry("800x520")
 
         self.tabs = ttk.Notebook(root)
