@@ -20,6 +20,24 @@ Location: `dist\Quaege_Bot\`
 
 **That's it!** 🎉
 
+## 🐧 Build Windows `.exe` from Fedora
+
+The repository includes a GitHub Actions workflow that builds the Windows
+executables on a Windows runner, so Fedora does not need to run PyInstaller
+itself.
+
+1. Push the repository, including `.github/workflows/build-windows.yml`, to
+   GitHub.
+2. Open the repository on GitHub and select **Actions**.
+3. Select **Build Windows executable** in the workflow list.
+4. Click **Run workflow**, choose the branch, and click **Run workflow** again.
+5. When the run finishes, open it and download the
+   `Quaege_Bot-windows` artifact from the **Artifacts** section.
+6. Extract the downloaded ZIP and run `Quaege_Tools.exe`.
+
+The workflow also runs automatically when you push a version tag such as
+`v1.0.0`.
+
 ## 📦 What You Get
 
 After building, you'll have a complete application in `dist\Quaege_Bot\`:
