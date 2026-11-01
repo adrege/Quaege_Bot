@@ -9,6 +9,7 @@ from email.mime.application import MIMEApplication
 
 import sys
 import argparse
+import json
 from pathlib import Path
 
 # Pad naar HTML-bestanden en CSV
@@ -97,6 +98,21 @@ def hoofdprogramma(dry_run=False):
     leden = lees_csv(csv_pad)
     betaal_link = get_betaal_link()
     onderwerp = getattr(config, "EMAIL_SUBJECT", "") or "Adrege Saldo Update"
+    settings_path = BASE_DIR / "settings.json"
+    selected_recipients = set()
+    include_r = False
+    if settings_path.exists():
+        try:
+            with settings_path.open(encoding="utf-8") as settings_file:
+                settings = json.load(settings_file)
+            selected_recipients = {
+                str(value).strip().lower()
+                for value in settings.get("selected_recipients", [])
+                if str(value).strip()
+            }
+            include_r = bool(settings.get("include_r_recipients", False))
+        except (OSError, ValueError) as error:
+            print(f"Waarschuwing: instellingen konden niet worden gelezen: {error}")
 
     to_send = []
     for lid in leden:
@@ -105,7 +121,12 @@ def hoofdprogramma(dry_run=False):
         status = lid["Banana status"].strip()
         nummer = lid["#"].strip()
 
-        if status != "S":
+        recipient_keys = {nummer.lower(), email.lower()}
+        if selected_recipients:
+            selected = bool(recipient_keys & selected_recipients)
+        else:
+            selected = status == "S" or (include_r and status == "R")
+        if not selected:
             continue
 
         bestand = f"Rekening_{status}{nummer}.html"
@@ -126,7 +147,7 @@ def hoofdprogramma(dry_run=False):
         print("DRY-RUN: geen e-mails verzonden.")
         print(f"CSV: {csv_pad}")
         print(f"betaal_link: {betaal_link}")
-        print(f"Aantal te mailen leden met status S: {len(to_send)}")
+        print(f"Aantal te mailen leden: {len(to_send)}")
         for info in to_send:
             print(f"Zou sturen naar: {info['email']} (bestand: {info['bestand']})")
         return
@@ -163,7 +184,7 @@ def _confirmed_to_send() -> bool:
     return bevestiging == "y"
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Stuur saldo updates naar leden met status S")
+    parser = argparse.ArgumentParser(description="Stuur saldo updates naar geselecteerde leden")
     parser.add_argument("--dry-run", action="store_true", help="Toon wat er gestuurd zou worden zonder te verzenden")
     args = parser.parse_args()
     hoofdprogramma(dry_run=args.dry_run)

@@ -5,7 +5,7 @@
 A collection of automated tools for managing Adrege's financial administration and member communications.
 
 ![Python](https://img.shields.io/badge/Python-3.8%2B-blue)
-![Platform](https://img.shields.io/badge/Platform-Windows-lightgrey)
+![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux-lightgrey)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
 ---
@@ -17,6 +17,9 @@ A collection of automated tools for managing Adrege's financial administration a
 - **Integrated tools** for common Quaege tasks
 - **Configuration management** via GUI (no code editing needed)
 - **Dry-run mode** for email operations with confirmation dialogs
+- **Optional negative transaction export** with correct reversal accounts and credit account `1020`
+- **Recipient manager** with status-S selection, optional status-R recipients, and manual multi-selection
+- **Linux/Fedora packaging** through a native `.rpm` build
 
 ### Available Tools
 
@@ -36,10 +39,10 @@ A collection of automated tools for managing Adrege's financial administration a
    - No arguments needed (uses your email from settings)
 
 4. **📧 Saldo Updates (Bulk)**
-   - Sends balance updates to all members with status 'S'
+   - Sends balance updates to the configured recipient selection
    - Includes dry-run preview before sending
    - Attaches individual HTML statements
-   - ⚠️ Use with caution - sends to all active members!
+   - ⚠️ Use with caution - sending is an external side effect!
 
 ---
 
@@ -83,8 +86,14 @@ pip install pandas openpyxl beautifulsoup4 pypdf pyinstaller
 # Activate virtual environment
 .\quaege tools.venv\Scripts\Activate.ps1
 
-# Run the GUI
+# Run the GUI (Linux and Windows)
 python main_gui.py
+```
+
+On Fedora, install Tk before starting the GUI:
+
+```bash
+sudo dnf install python3-tkinter
 ```
 
 ---
@@ -101,6 +110,19 @@ Want to create a standalone executable that others can use without Python?
 
 The distributable application will be in `dist\Quaege_Bot\`
 
+### Fedora RPM
+
+Build on Fedora (or another RPM-based Linux distribution):
+
+```bash
+sudo dnf install rpm-build python3-tkinter
+python3 -m pip install -r requirements.txt
+chmod +x build_linux.sh
+./build_linux.sh
+```
+
+The package is written to `dist/rpm/` and installs the `quaege-bot` launcher and desktop entry.
+
 **📖 Detailed build instructions:** See [README_build.md](README_build.md)
 
 ---
@@ -116,7 +138,10 @@ The GUI creates and manages this file automatically. Contains:
     "csv_path": "path/to/Ledenadministratie - Leden.csv",
     "betaal_link": "https://your-payment-link",
     "text": "Custom message text",
-    "eigen_email": "your-email@adrege.nl"
+    "eigen_email": "your-email@adrege.nl",
+    "include_negative_transactions": false,
+    "include_r_recipients": false,
+    "selected_recipients": []
 }
 ```
 
@@ -173,6 +198,8 @@ python scripts/split_rekeningen.py path/to/combined.html
 
 # Generate transactions
 python scripts/generate_transactions.py path/to/statement.pdf
+# Include outgoing/negative transactions (credit account 1020)
+python scripts/generate_transactions.py path/to/statement.pdf --include-negative
 
 # Send test email
 python scripts/test_saldo_update.py
@@ -203,7 +230,7 @@ python scripts/Stuur_saldo_updates.py  # Actually send
 - `pyinstaller` - Executable creation (dev only)
 
 ### System Requirements
-- **OS**: Windows 10/11
+- **OS**: Windows 10/11 or Fedora/Linux with Tk
 - **RAM**: 4GB minimum
 - **Storage**: 200MB for application + data
 

@@ -5,6 +5,7 @@ import sys
 import os
 import json
 import re
+import csv
 
 # ---- Paths ----
 # When frozen with PyInstaller, use the executable's directory
@@ -41,7 +42,10 @@ DEFAULT_SETTINGS = {
     "betaal_link": "",
     "text": "",
     "email_subject": "",
-    "eigen_email": ""
+    "eigen_email": "",
+    "include_negative_transactions": False,
+    "include_r_recipients": False,
+    "selected_recipients": []
 }
 
 # ---- Load / Save JSON helper ----
@@ -83,7 +87,7 @@ def update_config_variable(var_name, new_value):
 # ---- Tool list ----
 TOOLS = [
     {"name": " Split boekhouding in verschillende html bestanden", "script": "split_rekeningen.py", "needs_file": True, "needs_text": False},
-    {"name": "converteer betaalafscrift naar spaar tabel", "script": "generate_transactions.py", "needs_file": True, "needs_text": False},
+    {"name": "Converteer betaalafschrift naar transactietabel", "script": "generate_transactions.py", "needs_file": True, "needs_text": False},
     {"name": "Stuur test e-mail naar jezelf", "script": "test_saldo_update.py", "needs_file": False, "needs_text": False},
     {"name": "Stuur Saldo update naar iedereen(ZORG ERVOOR DAT CSV GEUPDATE IS!)", "script": "Stuur_saldo_updates.py", "needs_file": False, "needs_text": False},
 ]
@@ -92,47 +96,80 @@ TOOLS = [
 class ScriptRunnerApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Quaegé bot")
-        self.root.geometry("800x520")
+        self.root.title("Quaege Bot")
+        self.root.geometry("980x680")
+        self.root.minsize(820, 560)
+        self._configure_style()
 
         self.tabs = ttk.Notebook(root)
         self.tabs.pack(fill="both", expand=True)
 
         self.main_tab = ttk.Frame(self.tabs)
         self.settings_tab = ttk.Frame(self.tabs)
+        self.recipients_tab = ttk.Frame(self.tabs)
 
         self.tabs.add(self.main_tab, text="Scripts")
         self.tabs.add(self.settings_tab, text="Settings")
+        self.tabs.add(self.recipients_tab, text="Recipients")
 
+        self.settings = load_settings()
         self.create_main_tab()
         self.create_settings_tab()
+        self.create_recipients_tab()
+        self.refresh_recipients()
+
+    def _configure_style(self):
+        style = ttk.Style(self.root)
+        try:
+            style.theme_use("clam")
+        except tk.TclError:
+            pass
+        style.configure("Title.TLabel", font=("TkDefaultFont", 18, "bold"))
+        style.configure("Subtitle.TLabel", foreground="#5f6b7a")
+        style.configure("Accent.TButton", padding=(12, 7))
 
     # --- Main Tab ---
     def create_main_tab(self):
-        tk.Label(self.main_tab, text="Quaege Python Tools", font=("Arial", 14, "bold")).pack(pady=10)
+        ttk.Label(self.main_tab, text="Quaege Bot", style="Title.TLabel").pack(pady=(18, 2))
+        ttk.Label(
+            self.main_tab,
+            text="Automatiseer boekhouding, saldo-overzichten en communicatie.",
+            style="Subtitle.TLabel",
+        ).pack(pady=(0, 14))
 
         for tool in TOOLS:
-            frame = tk.LabelFrame(self.main_tab, text=tool["name"], padx=10, pady=5)
-            frame.pack(fill="x", padx=10, pady=5)
+            frame = ttk.LabelFrame(self.main_tab, text=tool["name"], padding=10)
+            frame.pack(fill="x", padx=18, pady=5)
 
             tool["file_var"] = tk.StringVar()
             tool["text_var"] = tk.StringVar()
 
             if tool["needs_file"]:
-                tk.Button(frame, text="Browse File", command=lambda t=tool: self.select_file(t)).pack(side="left", padx=5)
-                tk.Label(frame, textvariable=tool["file_var"], width=40, anchor="w").pack(side="left", padx=5)
+                ttk.Button(frame, text="Bestand kiezen", command=lambda t=tool: self.select_file(t)).pack(side="left", padx=5)
+                ttk.Label(frame, textvariable=tool["file_var"], width=52, anchor="w").pack(side="left", padx=5)
 
             if tool["needs_text"]:
-                tk.Entry(frame, textvariable=tool["text_var"], width=30).pack(side="left", padx=5)
+                ttk.Entry(frame, textvariable=tool["text_var"], width=30).pack(side="left", padx=5)
 
-            tk.Button(frame, text="Run", command=lambda t=tool: self.run_script(t)).pack(side="right", padx=5)
+            if tool["script"] == "generate_transactions.py":
+                tool["negative_var"] = tk.BooleanVar(
+                    value=self.settings.get("include_negative_transactions", False)
+                )
+                ttk.Checkbutton(
+                    frame,
+                    text="Ook negatieve ('Af') transacties",
+                    variable=tool["negative_var"],
+                ).pack(side="left", padx=12)
+
+            ttk.Button(frame, text="Uitvoeren", style="Accent.TButton",
+                       command=lambda t=tool: self.run_script(t)).pack(side="right", padx=5)
 
         # Log box
-        tk.Label(self.main_tab, text="Output log:").pack(pady=(10, 0))
+        ttk.Label(self.main_tab, text="Uitvoerlog").pack(pady=(12, 0))
         self.log_box = scrolledtext.ScrolledText(self.main_tab, wrap=tk.WORD, height=10)
         self.log_box.pack(fill="both", expand=True, padx=10, pady=5)
 
-        tk.Label(self.main_tab, text="Gemaakt met liefde 45 :)", font=("Arial", 8)).pack(pady=10)
+        ttk.Label(self.main_tab, text="Gemaakt met liefde voor de Quaege", style="Subtitle.TLabel").pack(pady=10)
 
     def select_file(self, tool):
         filename = filedialog.askopenfilename(title="Select File")
@@ -151,10 +188,18 @@ class ScriptRunnerApp:
     def run_script(self, tool):
         # When frozen, call the .exe; when running from source, call Python script
         if getattr(sys, 'frozen', False):
-            # Running as exe: look for sibling .exe files
-            script_exe = os.path.join(BASE_DIR, tool["script"].replace(".py", ".exe"))
-            if not os.path.exists(script_exe):
-                messagebox.showerror("Error", f"Executable not found:\n{script_exe}")
+            script_name = tool["script"].replace(".py", "")
+            candidates = [
+                os.path.join(BASE_DIR, f"{script_name}.exe"),
+                os.path.join(BASE_DIR, script_name),
+                os.path.join(BASE_DIR, script_name, script_name),
+            ]
+            script_exe = next((path for path in candidates if os.path.exists(path)), None)
+            if not script_exe:
+                messagebox.showerror(
+                    "Error",
+                    "Executable not found. Expected one of:\n" + "\n".join(candidates),
+                )
                 return
             args = [script_exe]
         else:
@@ -174,6 +219,8 @@ class ScriptRunnerApp:
         if tool["needs_text"]:
             text_input = tool["text_var"].get()
             args.append(text_input)
+        if tool["script"] == "generate_transactions.py" and tool["negative_var"].get():
+            args.append("--include-negative")
 
         try:
             # If this is a mail script, run a dry-run first and ask for confirmation
@@ -223,45 +270,176 @@ class ScriptRunnerApp:
     def create_settings_tab(self):
         self.settings = load_settings()
 
-        frm = tk.Frame(self.settings_tab)
+        frm = ttk.Frame(self.settings_tab)
         frm.pack(fill="both", expand=True, padx=20, pady=20)
+        frm.columnconfigure(1, weight=1)
 
         # CSV File
-        tk.Label(frm, text="pad naar CSV van de ledenadministratie:").grid(row=0, column=0, sticky="w")
+        ttk.Label(frm, text="Pad naar CSV van de ledenadministratie:").grid(row=0, column=0, sticky="w")
         self.csv_var = tk.StringVar(value=self.settings["csv_path"])
-        csv_entry = tk.Entry(frm, textvariable=self.csv_var, width=45, state="readonly")
+        csv_entry = ttk.Entry(frm, textvariable=self.csv_var, width=55, state="readonly")
         csv_entry.grid(row=0, column=1, pady=2, sticky="w")
         def select_csv_file():
             filename = filedialog.askopenfilename(title="Selecteer leden CSV", filetypes=[("CSV Files", "*.csv")])
             if filename:
                 self.csv_var.set(filename)
-        select_csv_btn = tk.Button(frm, text="Selecteer CSV", command=select_csv_file)
+                self.refresh_recipients()
+        select_csv_btn = ttk.Button(frm, text="Selecteer CSV", command=select_csv_file)
         select_csv_btn.grid(row=0, column=2, pady=2, sticky="w")
 
         # Link
-        tk.Label(frm, text="betaalverzoek Link (word opgeslagen in config.py):").grid(row=1, column=0, sticky="w", pady=5)
+        ttk.Label(frm, text="Betaalverzoek-link:").grid(row=1, column=0, sticky="w", pady=5)
         self.link_var = tk.StringVar(value=self.settings["betaal_link"])
-        tk.Entry(frm, textvariable=self.link_var, width=45).grid(row=1, column=1, padx=5, pady=5)
+        ttk.Entry(frm, textvariable=self.link_var, width=55).grid(row=1, column=1, padx=5, pady=5, sticky="ew")
 
         # Text
-        tk.Label(frm, text="Text (stored in config.py):").grid(row=2, column=0, sticky="nw")
+        ttk.Label(frm, text="Tekst in e-mail:").grid(row=2, column=0, sticky="nw")
         self.text_box = tk.Text(frm, width=45, height=5)
         self.text_box.insert("1.0", self.settings["text"])
         self.text_box.grid(row=2, column=1, padx=5, pady=5)
 
         # Email Subject
-        tk.Label(frm, text="E-mail onderwerp (stored in config.py):").grid(row=3, column=0, sticky="w", pady=5)
+        ttk.Label(frm, text="E-mailonderwerp:").grid(row=3, column=0, sticky="w", pady=5)
         self.subject_var = tk.StringVar(value=self.settings.get("email_subject", ""))
-        tk.Entry(frm, textvariable=self.subject_var, width=45).grid(row=3, column=1, padx=5, pady=5)
+        ttk.Entry(frm, textvariable=self.subject_var, width=55).grid(row=3, column=1, padx=5, pady=5, sticky="ew")
 
         #test email
-        tk.Label(frm, text="Je eigen Adrege e-mailadres (voor test e-mail):").grid(row=4, column=0, sticky="w", pady=5)
+        ttk.Label(frm, text="Eigen Adrege-e-mailadres (voor testmail):").grid(row=4, column=0, sticky="w", pady=5)
         self.email_var = tk.StringVar(value=self.settings.get("eigen_email", ""))
-        tk.Entry(frm, textvariable=self.email_var, width=45).grid(row=4, column=1, padx=5, pady=5)
+        ttk.Entry(frm, textvariable=self.email_var, width=55).grid(row=4, column=1, padx=5, pady=5, sticky="ew")
+
+        self.include_r_var = tk.BooleanVar(value=self.settings.get("include_r_recipients", False))
+        ttk.Checkbutton(
+            frm, text="Status R meenemen als er geen handmatige selectie is",
+            variable=self.include_r_var,
+        ).grid(row=5, column=1, sticky="w", padx=5, pady=8)
 
         # Save button
-        save_btn = tk.Button(frm, text="💾 Save Settings", command=self.save_all_settings)
-        save_btn.grid(row=5, column=0, pady=15, sticky="e")
+        save_btn = ttk.Button(frm, text="Instellingen opslaan", style="Accent.TButton",
+                              command=self.save_all_settings)
+        save_btn.grid(row=6, column=0, pady=15, sticky="e")
+
+    # --- Recipients Tab ---
+    def create_recipients_tab(self):
+        container = ttk.Frame(self.recipients_tab, padding=18)
+        container.pack(fill="both", expand=True)
+        container.columnconfigure(0, weight=1)
+        container.rowconfigure(1, weight=1)
+
+        ttk.Label(container, text="Ontvangers saldo-update", style="Title.TLabel").grid(
+            row=0, column=0, sticky="w"
+        )
+        ttk.Label(
+            container,
+            text="Selecteer meerdere personen. Zonder handmatige selectie worden status S (en optioneel R) gebruikt.",
+            style="Subtitle.TLabel",
+        ).grid(row=0, column=0, sticky="w", pady=(34, 10))
+
+        table_frame = ttk.Frame(container)
+        table_frame.grid(row=1, column=0, sticky="nsew")
+        table_frame.columnconfigure(0, weight=1)
+        table_frame.rowconfigure(0, weight=1)
+        self.recipient_tree = ttk.Treeview(
+            table_frame,
+            columns=("name", "email", "status", "number"),
+            show="headings",
+            selectmode="extended",
+        )
+        self.recipient_tree.bind("<<TreeviewSelect>>", lambda _event: self.update_recipient_status())
+        for column, heading, width in (
+            ("name", "Naam", 220),
+            ("email", "E-mailadres", 300),
+            ("status", "Status", 90),
+            ("number", "Nummer", 100),
+        ):
+            self.recipient_tree.heading(column, text=heading)
+            self.recipient_tree.column(column, width=width, anchor="w")
+        scrollbar = ttk.Scrollbar(table_frame, orient="vertical",
+                                  command=self.recipient_tree.yview)
+        self.recipient_tree.configure(yscrollcommand=scrollbar.set)
+        self.recipient_tree.grid(row=0, column=0, sticky="nsew")
+        scrollbar.grid(row=0, column=1, sticky="ns")
+
+        buttons = ttk.Frame(container)
+        buttons.grid(row=2, column=0, sticky="w", pady=(12, 0))
+        ttk.Button(buttons, text="Selecteer alle status S",
+                   command=self.select_s_recipients).pack(side="left", padx=(0, 6))
+        ttk.Button(buttons, text="Selecteer iedereen",
+                   command=self.select_all_recipients).pack(side="left", padx=6)
+        ttk.Button(buttons, text="Wis handmatige selectie",
+                   command=self.clear_recipient_selection).pack(side="left", padx=6)
+        ttk.Button(buttons, text="Selectie opslaan", style="Accent.TButton",
+                   command=self.save_recipient_selection).pack(side="left", padx=6)
+
+        self.recipient_status = tk.StringVar()
+        ttk.Label(container, textvariable=self.recipient_status,
+                  style="Subtitle.TLabel").grid(row=3, column=0, sticky="w", pady=8)
+
+    def refresh_recipients(self):
+        if not hasattr(self, "recipient_tree"):
+            return
+        self.recipient_tree.delete(*self.recipient_tree.get_children())
+        csv_path = self.csv_var.get().strip() if hasattr(self, "csv_var") else self.settings.get("csv_path", "")
+        if not csv_path or not os.path.exists(csv_path):
+            self.recipient_status.set("Selecteer eerst een geldige ledenadministratie-CSV in Settings.")
+            return
+        try:
+            with open(csv_path, newline="", encoding="utf-8-sig") as file:
+                for row in csv.DictReader(file):
+                    number = row.get("#", "").strip()
+                    email = row.get("Emailadres", "").strip()
+                    first_name = row.get("Voornaam", "").strip()
+                    last_name = row.get("Achternaam", "").strip()
+                    status = row.get("Banana status", "").strip()
+                    if email:
+                        self.recipient_tree.insert(
+                            "", "end", iid=email.lower(),
+                            values=(f"{first_name} {last_name}".strip(), email, status, number)
+                        )
+        except (OSError, csv.Error) as error:
+            self.recipient_status.set(f"CSV kon niet worden gelezen: {error}")
+            return
+
+        selected = {str(value).lower() for value in self.settings.get("selected_recipients", [])}
+        for item in self.recipient_tree.get_children():
+            values = self.recipient_tree.item(item, "values")
+            if item.lower() in selected or str(values[3]).lower() in selected:
+                self.recipient_tree.selection_add(item)
+        self.update_recipient_status()
+
+    def select_s_recipients(self):
+        self.clear_recipient_selection()
+        items = [
+            item for item in self.recipient_tree.get_children()
+            if str(self.recipient_tree.item(item, "values")[2]).upper().startswith("S")
+        ]
+        self.recipient_tree.selection_set(items)
+        self.update_recipient_status()
+
+    def select_all_recipients(self):
+        self.recipient_tree.selection_set(self.recipient_tree.get_children())
+        self.update_recipient_status()
+
+    def clear_recipient_selection(self):
+        self.recipient_tree.selection_remove(self.recipient_tree.selection())
+        self.update_recipient_status()
+
+    def update_recipient_status(self):
+        count = len(self.recipient_tree.selection())
+        self.recipient_status.set(
+            f"{count} handmatige ontvanger(s) geselecteerd. "
+            "Een lege selectie gebruikt de statusinstellingen."
+        )
+
+    def save_recipient_selection(self):
+        self.settings["selected_recipients"] = [
+            str(self.recipient_tree.item(item, "values")[3]).strip()
+            or str(self.recipient_tree.item(item, "values")[1]).strip()
+            for item in self.recipient_tree.selection()
+        ]
+        save_settings(self.settings)
+        self.update_recipient_status()
+        messagebox.showinfo("Opgeslagen", "De ontvangerselectie is opgeslagen.")
 
     def browse_csv(self):
         filename = filedialog.askopenfilename(title="Select CSV file", filetypes=[("CSV Files", "*.csv")])
@@ -280,6 +458,19 @@ class ScriptRunnerApp:
         self.settings["text"] = new_text
         self.settings["email_subject"] = new_subject
         self.settings["eigen_email"] = new_email
+        self.settings["include_r_recipients"] = self.include_r_var.get()
+        transaction_tool = next(
+            (tool for tool in TOOLS if tool["script"] == "generate_transactions.py"),
+            None,
+        )
+        if transaction_tool:
+            self.settings["include_negative_transactions"] = transaction_tool["negative_var"].get()
+        if hasattr(self, "recipient_tree"):
+            self.settings["selected_recipients"] = [
+                str(self.recipient_tree.item(item, "values")[3]).strip()
+                or str(self.recipient_tree.item(item, "values")[1]).strip()
+                for item in self.recipient_tree.selection()
+            ]
 
         save_settings(self.settings)
         update_config_variable("CSV_PAD", new_csv)
@@ -287,6 +478,7 @@ class ScriptRunnerApp:
         update_config_variable("TEXT_NOTE", new_text)
         update_config_variable("EMAIL_SUBJECT", new_subject)
         update_config_variable("test_email", new_email)
+        self.refresh_recipients()
 
         messagebox.showinfo("Saved", "Settings updated successfully!")
 
