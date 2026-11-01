@@ -20,6 +20,7 @@ A collection of automated tools for managing Adrege's financial administration a
 - **Optional negative transaction export** with correct reversal accounts and credit account `1020`
 - **Recipient manager** with status-S selection, optional status-R recipients, and manual multi-selection
 - **Linux/Fedora packaging** through a native `.rpm` build
+- **Portable bank CSV input** using the SNS bank-export columns (`Bedrag bij / af`)
 
 ### Available Tools
 
@@ -123,6 +124,14 @@ chmod +x build_linux.sh
 
 The package is written to `dist/rpm/` and installs the `quaege-bot` launcher and desktop entry.
 
+The installed application keeps writable files outside `/opt`:
+
+- Settings and SMTP configuration: `~/.config/quaege-bot/`
+- Excel, CSV and split HTML output: `~/.local/share/quaege-bot/exports/`
+
+These folders can be opened from the Settings tab. SMTP credentials can be entered
+there; the application creates a user-level `config.py` automatically.
+
 **📖 Detailed build instructions:** See [README_build.md](README_build.md)
 
 ---
@@ -200,6 +209,8 @@ python scripts/split_rekeningen.py path/to/combined.html
 python scripts/generate_transactions.py path/to/statement.pdf
 # Include outgoing/negative transactions (credit account 1020)
 python scripts/generate_transactions.py path/to/statement.pdf --include-negative
+# The same command accepts an SNS bank export CSV
+python scripts/generate_transactions.py path/to/transactie-historie.csv
 
 # Send test email
 python scripts/test_saldo_update.py

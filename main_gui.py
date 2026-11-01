@@ -6,6 +6,9 @@ import os
 import json
 import re
 import csv
+import shutil
+from pathlib import Path
+from app_paths import EXPORT_DIR, SETTINGS_PATH, USER_CONFIG_PATH, ensure_directories
 
 # ---- Paths ----
 # When frozen with PyInstaller, use the executable's directory
@@ -15,8 +18,8 @@ else:
     BASE_DIR = os.path.dirname(__file__)
 
 SCRIPTS_DIR = os.path.join(BASE_DIR, "scripts")
-CONFIG_PATH = os.path.join(BASE_DIR, "config.py")
-SETTINGS_JSON = os.path.join(BASE_DIR, "settings.json")
+CONFIG_PATH = str(USER_CONFIG_PATH)
+SETTINGS_JSON = str(SETTINGS_PATH)
 
 def get_venv_python():
     override = os.environ.get("VENV_PYTHON")
@@ -45,11 +48,14 @@ DEFAULT_SETTINGS = {
     "eigen_email": "",
     "include_negative_transactions": False,
     "include_r_recipients": False,
-    "selected_recipients": []
+    "selected_recipients": [],
+    "smtp_sender": "",
+    "smtp_password": "",
 }
 
 # ---- Load / Save JSON helper ----
 def load_settings():
+    ensure_directories()
     if not os.path.exists(SETTINGS_JSON):
         return DEFAULT_SETTINGS.copy()
     with open(SETTINGS_JSON, "r", encoding="utf-8") as f:
@@ -59,20 +65,21 @@ def load_settings():
     return data
 
 def save_settings(data):
+    ensure_directories()
     with open(SETTINGS_JSON, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=4)
 
 # ---- Update config.py helper ----
 def update_config_variable(var_name, new_value):
+    ensure_directories()
     if not os.path.exists(CONFIG_PATH):
-        messagebox.showerror("Error", f"config.py not found: {CONFIG_PATH}")
-        return False
+        shutil.copyfile(os.path.join(BASE_DIR, "config.py"), CONFIG_PATH)
 
     with open(CONFIG_PATH, "r", encoding="utf-8") as f:
         content = f.read()
 
     pattern = rf'^{var_name}\s*=\s*["\'].*?["\']'
-    replacement = f'{var_name} = "{new_value}"'
+    replacement = f'{var_name} = {new_value!r}'
 
     if re.search(pattern, content, flags=re.MULTILINE):
         new_content = re.sub(pattern, replacement, content, flags=re.MULTILINE)
@@ -127,6 +134,12 @@ class ScriptRunnerApp:
         style.configure("Title.TLabel", font=("TkDefaultFont", 18, "bold"))
         style.configure("Subtitle.TLabel", foreground="#5f6b7a")
         style.configure("Accent.TButton", padding=(12, 7))
+        try:
+            icon_path = Path(BASE_DIR) / "Adrege_logo.png"
+            self.window_icon = tk.PhotoImage(file=str(icon_path))
+            self.root.iconphoto(True, self.window_icon)
+        except tk.TclError:
+            self.window_icon = None
 
     # --- Main Tab ---
     def create_main_tab(self):
@@ -172,9 +185,27 @@ class ScriptRunnerApp:
         ttk.Label(self.main_tab, text="Gemaakt met liefde voor de Quaege", style="Subtitle.TLabel").pack(pady=10)
 
     def select_file(self, tool):
-        filename = filedialog.askopenfilename(title="Select File")
+        filename = self.native_file_selector(
+            title="Bestand kiezen",
+            filetypes="*.pdf *.csv *.html" if tool["script"] != "generate_transactions.py"
+            else "*.pdf *.csv",
+        )
         if filename:
             tool["file_var"].set(filename)
+
+    def native_file_selector(self, title, filetypes):
+        """Use Fedora's GTK/KDE chooser when available, with Tk as fallback."""
+        for command in (("zenity", "--file-selection", f"--title={title}",
+                         f"--file-filter=Bestanden | {filetypes}"),
+                        ("kdialog", "--getopenfilename", str(Path.home()),
+                         f"*.{{{filetypes.replace(' ', ',')}}}")):
+            if not shutil.which(command[0]):
+                continue
+            result = subprocess.run(command, capture_output=True, text=True)
+            if result.returncode == 0 and result.stdout.strip():
+                return result.stdout.strip()
+            return ""
+        return filedialog.askopenfilename(title=title)
 
     def get_script_runner(self):
         if getattr(sys, 'frozen', False):
@@ -223,6 +254,9 @@ class ScriptRunnerApp:
             args.append("--include-negative")
 
         try:
+            environment = os.environ.copy()
+            environment["QUAEGE_EXPORT_DIR"] = str(EXPORT_DIR)
+            environment["QUAEGE_CONFIG_DIR"] = str(USER_CONFIG_PATH.parent)
             # If this is a mail script, run a dry-run first and ask for confirmation
             is_test_mail = tool["script"] == "test_saldo_update.py"
             is_bulk_mail = tool["script"] == "Stuur_saldo_updates.py"
@@ -231,7 +265,10 @@ class ScriptRunnerApp:
             if is_test_mail or is_bulk_mail:
                 dry_run_args = args + ["--dry-run"]
                 # Set cwd to BASE_DIR so scripts find resources
-                preview = subprocess.run(dry_run_args, capture_output=True, text=True, cwd=BASE_DIR)
+                preview = subprocess.run(
+                    dry_run_args, capture_output=True, text=True,
+                    cwd=BASE_DIR, env=environment,
+                )
                 preview_output = (preview.stdout or "").strip()
                 preview_error = (preview.stderr or "").strip()
                 # Show preview in log
@@ -256,7 +293,9 @@ class ScriptRunnerApp:
                     return
 
             # Run the actual script
-            result = subprocess.run(args, capture_output=True, text=True, cwd=BASE_DIR)
+            result = subprocess.run(
+                args, capture_output=True, text=True, cwd=BASE_DIR, env=environment
+            )
             output = result.stdout.strip() or "(no output)"
             error = result.stderr.strip()
             self.log_box.insert(tk.END, f"\n> {tool['name']} executed\n{output}\n", "output")
@@ -280,7 +319,7 @@ class ScriptRunnerApp:
         csv_entry = ttk.Entry(frm, textvariable=self.csv_var, width=55, state="readonly")
         csv_entry.grid(row=0, column=1, pady=2, sticky="w")
         def select_csv_file():
-            filename = filedialog.askopenfilename(title="Selecteer leden CSV", filetypes=[("CSV Files", "*.csv")])
+            filename = self.native_file_selector("Selecteer ledenadministratie CSV", "*.csv")
             if filename:
                 self.csv_var.set(filename)
                 self.refresh_recipients()
@@ -314,17 +353,39 @@ class ScriptRunnerApp:
             variable=self.include_r_var,
         ).grid(row=5, column=1, sticky="w", padx=5, pady=8)
 
-        # Save button
+        ttk.Label(frm, text="SMTP-gebruikersnaam:").grid(row=6, column=0, sticky="w", pady=5)
+        self.smtp_sender_var = tk.StringVar(value=self.settings.get("smtp_sender", ""))
+        ttk.Entry(frm, textvariable=self.smtp_sender_var, width=55).grid(
+            row=6, column=1, padx=5, pady=5, sticky="ew"
+        )
+        ttk.Label(frm, text="SMTP-wachtwoord:").grid(row=7, column=0, sticky="w", pady=5)
+        self.smtp_password_var = tk.StringVar(value=self.settings.get("smtp_password", ""))
+        ttk.Entry(frm, textvariable=self.smtp_password_var, show="*", width=55).grid(
+            row=7, column=1, padx=5, pady=5, sticky="ew"
+        )
+        ttk.Label(
+            frm,
+            text=f"Bestanden: {EXPORT_DIR}\nConfiguratie: {USER_CONFIG_PATH}",
+            style="Subtitle.TLabel",
+        ).grid(row=8, column=1, sticky="w", padx=5, pady=8)
+        ttk.Button(frm, text="Open exportmap", command=lambda: self.open_path(EXPORT_DIR)).grid(
+            row=8, column=2, sticky="w"
+        )
+        ttk.Button(frm, text="Open configuratiemap",
+                   command=lambda: self.open_path(USER_CONFIG_PATH.parent)).grid(
+            row=9, column=2, sticky="w"
+        )
+
         save_btn = ttk.Button(frm, text="Instellingen opslaan", style="Accent.TButton",
                               command=self.save_all_settings)
-        save_btn.grid(row=6, column=0, pady=15, sticky="e")
+        save_btn.grid(row=10, column=0, pady=15, sticky="e")
 
     # --- Recipients Tab ---
     def create_recipients_tab(self):
         container = ttk.Frame(self.recipients_tab, padding=18)
         container.pack(fill="both", expand=True)
         container.columnconfigure(0, weight=1)
-        container.rowconfigure(1, weight=1)
+        container.rowconfigure(2, weight=1)
 
         ttk.Label(container, text="Ontvangers saldo-update", style="Title.TLabel").grid(
             row=0, column=0, sticky="w"
@@ -333,35 +394,37 @@ class ScriptRunnerApp:
             container,
             text="Selecteer meerdere personen. Zonder handmatige selectie worden status S (en optioneel R) gebruikt.",
             style="Subtitle.TLabel",
-        ).grid(row=0, column=0, sticky="w", pady=(34, 10))
+        ).grid(row=1, column=0, sticky="w", pady=(2, 10))
 
         table_frame = ttk.Frame(container)
-        table_frame.grid(row=1, column=0, sticky="nsew")
+        table_frame.grid(row=2, column=0, sticky="nsew")
         table_frame.columnconfigure(0, weight=1)
         table_frame.rowconfigure(0, weight=1)
-        self.recipient_tree = ttk.Treeview(
-            table_frame,
-            columns=("name", "email", "status", "number"),
-            show="headings",
-            selectmode="extended",
-        )
-        self.recipient_tree.bind("<<TreeviewSelect>>", lambda _event: self.update_recipient_status())
-        for column, heading, width in (
-            ("name", "Naam", 220),
-            ("email", "E-mailadres", 300),
-            ("status", "Status", 90),
-            ("number", "Nummer", 100),
-        ):
-            self.recipient_tree.heading(column, text=heading)
-            self.recipient_tree.column(column, width=width, anchor="w")
+        self.recipient_canvas = tk.Canvas(table_frame, highlightthickness=0)
         scrollbar = ttk.Scrollbar(table_frame, orient="vertical",
-                                  command=self.recipient_tree.yview)
-        self.recipient_tree.configure(yscrollcommand=scrollbar.set)
-        self.recipient_tree.grid(row=0, column=0, sticky="nsew")
+                                  command=self.recipient_canvas.yview)
+        self.recipient_list = ttk.Frame(self.recipient_canvas)
+        self.recipient_window = self.recipient_canvas.create_window(
+            (0, 0), window=self.recipient_list, anchor="nw"
+        )
+        self.recipient_list.bind(
+            "<Configure>",
+            lambda _event: self.recipient_canvas.configure(
+                scrollregion=self.recipient_canvas.bbox("all")
+            ),
+        )
+        self.recipient_canvas.bind(
+            "<Configure>",
+            lambda event: self.recipient_canvas.itemconfigure(
+                self.recipient_window, width=event.width
+            ),
+        )
+        self.recipient_canvas.configure(yscrollcommand=scrollbar.set)
+        self.recipient_canvas.grid(row=0, column=0, sticky="nsew")
         scrollbar.grid(row=0, column=1, sticky="ns")
 
         buttons = ttk.Frame(container)
-        buttons.grid(row=2, column=0, sticky="w", pady=(12, 0))
+        buttons.grid(row=3, column=0, sticky="w", pady=(12, 0))
         ttk.Button(buttons, text="Selecteer alle status S",
                    command=self.select_s_recipients).pack(side="left", padx=(0, 6))
         ttk.Button(buttons, text="Selecteer iedereen",
@@ -373,12 +436,14 @@ class ScriptRunnerApp:
 
         self.recipient_status = tk.StringVar()
         ttk.Label(container, textvariable=self.recipient_status,
-                  style="Subtitle.TLabel").grid(row=3, column=0, sticky="w", pady=8)
+                  style="Subtitle.TLabel").grid(row=4, column=0, sticky="w", pady=8)
 
     def refresh_recipients(self):
-        if not hasattr(self, "recipient_tree"):
+        if not hasattr(self, "recipient_list"):
             return
-        self.recipient_tree.delete(*self.recipient_tree.get_children())
+        for child in self.recipient_list.winfo_children():
+            child.destroy()
+        self.recipient_vars = {}
         csv_path = self.csv_var.get().strip() if hasattr(self, "csv_var") else self.settings.get("csv_path", "")
         if not csv_path or not os.path.exists(csv_path):
             self.recipient_status.set("Selecteer eerst een geldige ledenadministratie-CSV in Settings.")
@@ -392,40 +457,49 @@ class ScriptRunnerApp:
                     last_name = row.get("Achternaam", "").strip()
                     status = row.get("Banana status", "").strip()
                     if email:
-                        self.recipient_tree.insert(
-                            "", "end", iid=email.lower(),
-                            values=(f"{first_name} {last_name}".strip(), email, status, number)
+                        selected = (
+                            email.lower() in {
+                                str(value).lower()
+                                for value in self.settings.get("selected_recipients", [])
+                            }
+                            or number.lower() in {
+                                str(value).lower()
+                                for value in self.settings.get("selected_recipients", [])
+                            }
                         )
+                        variable = tk.BooleanVar(value=selected)
+                        self.recipient_vars[email.lower()] = (variable, number, email, status)
+                        ttk.Checkbutton(
+                            self.recipient_list,
+                            text=f"{first_name} {last_name}  |  {email}  |  status {status}  |  #{number}",
+                            variable=variable,
+                        ).pack(anchor="w", fill="x", padx=8, pady=2)
         except (OSError, csv.Error) as error:
             self.recipient_status.set(f"CSV kon niet worden gelezen: {error}")
             return
 
-        selected = {str(value).lower() for value in self.settings.get("selected_recipients", [])}
-        for item in self.recipient_tree.get_children():
-            values = self.recipient_tree.item(item, "values")
-            if item.lower() in selected or str(values[3]).lower() in selected:
-                self.recipient_tree.selection_add(item)
         self.update_recipient_status()
 
     def select_s_recipients(self):
-        self.clear_recipient_selection()
-        items = [
-            item for item in self.recipient_tree.get_children()
-            if str(self.recipient_tree.item(item, "values")[2]).upper().startswith("S")
-        ]
-        self.recipient_tree.selection_set(items)
+        for variable, _number, _email, _status in self.recipient_vars.values():
+            variable.set(False)
+        for variable, _number, _address, status in self.recipient_vars.values():
+            if status.upper().startswith("S"):
+                variable.set(True)
         self.update_recipient_status()
 
     def select_all_recipients(self):
-        self.recipient_tree.selection_set(self.recipient_tree.get_children())
+        for variable, _number, _email, _status in self.recipient_vars.values():
+            variable.set(True)
         self.update_recipient_status()
 
     def clear_recipient_selection(self):
-        self.recipient_tree.selection_remove(self.recipient_tree.selection())
+        for variable, _number, _email, _status in self.recipient_vars.values():
+            variable.set(False)
         self.update_recipient_status()
 
     def update_recipient_status(self):
-        count = len(self.recipient_tree.selection())
+        count = sum(variable.get() for variable, _number, _email, _status in self.recipient_vars.values())
         self.recipient_status.set(
             f"{count} handmatige ontvanger(s) geselecteerd. "
             "Een lege selectie gebruikt de statusinstellingen."
@@ -433,18 +507,31 @@ class ScriptRunnerApp:
 
     def save_recipient_selection(self):
         self.settings["selected_recipients"] = [
-            str(self.recipient_tree.item(item, "values")[3]).strip()
-            or str(self.recipient_tree.item(item, "values")[1]).strip()
-            for item in self.recipient_tree.selection()
+            number or email
+            for variable, number, email, _status in self.recipient_vars.values()
+            if variable.get()
         ]
         save_settings(self.settings)
         self.update_recipient_status()
         messagebox.showinfo("Opgeslagen", "De ontvangerselectie is opgeslagen.")
 
     def browse_csv(self):
-        filename = filedialog.askopenfilename(title="Select CSV file", filetypes=[("CSV Files", "*.csv")])
+        filename = self.native_file_selector("Selecteer ledenadministratie CSV", "*.csv")
         if filename:
             self.csv_var.set(filename)
+
+    def open_path(self, path):
+        ensure_directories()
+        path = str(path)
+        try:
+            if sys.platform.startswith("linux"):
+                subprocess.Popen(["xdg-open", path])
+            elif os.name == "nt":
+                os.startfile(path)
+            else:
+                subprocess.Popen(["open", path])
+        except OSError as error:
+            messagebox.showerror("Openen mislukt", str(error))
 
     def save_all_settings(self):
         new_csv = self.csv_var.get().strip()
@@ -459,17 +546,19 @@ class ScriptRunnerApp:
         self.settings["email_subject"] = new_subject
         self.settings["eigen_email"] = new_email
         self.settings["include_r_recipients"] = self.include_r_var.get()
+        self.settings["smtp_sender"] = self.smtp_sender_var.get().strip()
+        self.settings["smtp_password"] = self.smtp_password_var.get()
         transaction_tool = next(
             (tool for tool in TOOLS if tool["script"] == "generate_transactions.py"),
             None,
         )
         if transaction_tool:
             self.settings["include_negative_transactions"] = transaction_tool["negative_var"].get()
-        if hasattr(self, "recipient_tree"):
+        if hasattr(self, "recipient_vars"):
             self.settings["selected_recipients"] = [
-                str(self.recipient_tree.item(item, "values")[3]).strip()
-                or str(self.recipient_tree.item(item, "values")[1]).strip()
-                for item in self.recipient_tree.selection()
+                number or email
+                for variable, number, email, _status in self.recipient_vars.values()
+                if variable.get()
             ]
 
         save_settings(self.settings)
@@ -478,6 +567,8 @@ class ScriptRunnerApp:
         update_config_variable("TEXT_NOTE", new_text)
         update_config_variable("EMAIL_SUBJECT", new_subject)
         update_config_variable("test_email", new_email)
+        update_config_variable("sender_email", self.settings["smtp_sender"])
+        update_config_variable("password", self.settings["smtp_password"])
         self.refresh_recipients()
 
         messagebox.showinfo("Saved", "Settings updated successfully!")

@@ -15,7 +15,7 @@ from pathlib import Path
 # Pad naar HTML-bestanden en CSV
 # Use absolute paths so the script can be run from anywhere
 BASE_DIR = Path(__file__).resolve().parent.parent
-HTML_MAP = str(BASE_DIR / "rekeningen_split")
+HTML_MAP = str(Path(os.environ.get("QUAEGE_EXPORT_DIR", EXPORT_DIR)) / "rekeningen_split")
 DEFAULT_CSV_PAD = str(Path(__file__).resolve().parent / "Ledenadministratie - Leden.csv")
 # Ensure we can import the top-level config.py when running from the scripts folder
 
@@ -23,6 +23,7 @@ if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
 import config
+from app_paths import EXPORT_DIR, SETTINGS_PATH
 
 def get_csv_path():
     csv_from_config = getattr(config, "CSV_PAD", None)
@@ -98,7 +99,7 @@ def hoofdprogramma(dry_run=False):
     leden = lees_csv(csv_pad)
     betaal_link = get_betaal_link()
     onderwerp = getattr(config, "EMAIL_SUBJECT", "") or "Adrege Saldo Update"
-    settings_path = BASE_DIR / "settings.json"
+    settings_path = Path(os.environ.get("QUAEGE_CONFIG_DIR", SETTINGS_PATH.parent)) / "settings.json"
     selected_recipients = set()
     include_r = False
     if settings_path.exists():

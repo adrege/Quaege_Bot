@@ -16,9 +16,10 @@ if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
 import config
+from app_paths import EXPORT_DIR
 
 # Use absolute paths so the script can be run from anywhere
-HTML_MAP = str(BASE_DIR / "rekeningen_split")
+HTML_MAP = str(Path(os.environ.get("QUAEGE_EXPORT_DIR", EXPORT_DIR)) / "rekeningen_split")
 # Default CSV lives in the scripts folder (note the casing in the filename)
 DEFAULT_CSV_PAD = str(Path(__file__).resolve().parent / "Ledenadministratie - Leden.csv")
 
