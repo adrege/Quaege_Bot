@@ -49,6 +49,7 @@ def attach_logo(msg):
 # Always resolve logo path relative to the executable or script location
 import os
 import sys
+from pathlib import Path
 def get_base_dir():
   if getattr(sys, 'frozen', False):
     return os.path.dirname(sys.executable)
@@ -65,6 +66,25 @@ TEXT_NOTE = ""
 EMAIL_SUBJECT = ""
 CSV_PAD = ""
 BETAAL_LINK = ""
+
+# A packaged application is read-only under /opt. Load the user's writable
+# configuration after the defaults so SMTP credentials never need to be edited
+# inside the installation directory.
+try:
+    from app_paths import USER_CONFIG_PATH
+    if (
+        USER_CONFIG_PATH.exists()
+        and USER_CONFIG_PATH.resolve() != Path(__file__).resolve()
+        and not os.environ.get("QUAEGE_LOADING_USER_CONFIG")
+    ):
+        os.environ["QUAEGE_LOADING_USER_CONFIG"] = "1"
+        try:
+            with USER_CONFIG_PATH.open(encoding="utf-8") as user_config:
+                exec(compile(user_config.read(), str(USER_CONFIG_PATH), "exec"), globals())
+        finally:
+            os.environ.pop("QUAEGE_LOADING_USER_CONFIG", None)
+except (OSError, SyntaxError) as error:
+    print(f"Warning: user configuration could not be loaded: {error}")
 
 def genereer_dynamische_tekst(voornaam, betaal_link):
     """Genereert dynamische e-mail tekst met voornaam, betaal link en TEXT_NOTE"""

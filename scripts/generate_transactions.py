@@ -10,6 +10,7 @@ import re
 from datetime import datetime
 import os
 import sys
+import argparse
 from pathlib import Path
 
 # Ensure we can import the top-level config.py when running from the scripts folder
@@ -18,9 +19,17 @@ if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
 import config
+from app_paths import EXPORT_DIR
 
 # Default CSV lives in the scripts folder
 DEFAULT_CSV_PAD = str(Path(__file__).resolve().parent / "Ledenadministratie - Leden.csv")
+BANK_COLUMNS = [
+    "Datum", "Je rekening", "Van / naar", "Naam", "Adres", "Postcode",
+    "Woonplaats", "Valuta saldo", "Saldo voor boeking", "Valuta",
+    "Bedrag bij / af", "Verwerkingsdatum", "Valutadatum", "Code", "Type",
+    "Volgnummer", "Betalingskenmerk", "Omschrijving", "Afschriftnummer",
+    "Categorie",
+]
 
 def get_csv_path():
     """Prefer CSV path from config (CSV_PAD), else fall back to default in scripts folder."""
@@ -65,7 +74,10 @@ class TransactionProcessor:
     
     def _normalize_amount(self, amount_text):
         """Converteer bedrag met komma-notatie naar float."""
-        return float(amount_text.replace('.', '').replace(',', '.'))
+        value = amount_text.strip().replace("€", "").replace(" ", "")
+        if "," in value:
+            value = value.replace(".", "").replace(",", ".")
+        return float(value)
 
     def get_intermediate_csv_path(self, output_path=None):
         """Maak een duidelijke naam voor de tussen-CSV met ruwe transacties."""
@@ -130,23 +142,42 @@ class TransactionProcessor:
         output_path.parent.mkdir(parents=True, exist_ok=True)
         with open(output_path, mode='w', newline='', encoding='utf-8') as file:
             writer = csv.writer(file)
-            writer.writerow(["Datum", "Bij/Af", "Bedrag", "Omschrijving"])
-            writer.writerows(transactions)
+            writer.writerow(BANK_COLUMNS)
+            for date, direction, amount, description in transactions:
+                signed_amount = amount.replace(",", ".")
+                if direction == "Af" and not signed_amount.startswith("-"):
+                    signed_amount = f"-{signed_amount}"
+                writer.writerow([
+                    date, "", "", "", "", "", "", "EUR", "", "EUR",
+                    signed_amount, date, date, "", "", "", "", description, "", "",
+                ])
 
         print(f"Extractie voltooid. {len(transactions)} rijen opgeslagen in: {output_csv}")
         return output_csv
 
-    def load_transactions_from_csv(self, extracted_csv_path):
-        """Laad tussen-CSV en zet om naar intern transactieformaat."""
+    def load_transactions_from_csv(self, extracted_csv_path, include_negative=False):
+        """Laad tussen-CSV en zet inkomende en optioneel uitgaande transacties om."""
         transactions = []
-        df = pd.read_csv(extracted_csv_path)
+        df = pd.read_csv(extracted_csv_path, dtype=str, sep=None, engine="python").fillna("")
 
         for _, row in df.iterrows():
-            bij_af = str(row.get('Bij/Af', '')).strip()
-            if bij_af != 'Bij':
+            direction_column = str(row.get('Bij/Af', '')).strip()
+            amount_column = str(row.get('Bedrag bij / af', '')).strip()
+            if amount_column:
+                try:
+                    signed_amount = self._normalize_amount(amount_column)
+                except ValueError:
+                    signed_amount = 0
+                bij_af = "Af" if signed_amount < 0 else "Bij"
+                bedrag = amount_column
+            else:
+                bij_af = direction_column
+                bedrag = str(row.get('Bedrag', '')).strip()
+            if bij_af not in ('Bij', 'Af'):
+                continue
+            if bij_af == 'Af' and not include_negative:
                 continue
 
-            bedrag = str(row.get('Bedrag', '')).strip()
             if not bedrag:
                 continue
 
@@ -155,10 +186,11 @@ class TransactionProcessor:
             except ValueError:
                 continue
 
-            if amount <= 0:
+            amount = abs(amount)
+            if amount == 0:
                 continue
 
-            date_str = str(row.get('Datum', '')).strip()
+            date_str = str(row.get('Datum', '')).strip().replace("-", "/")
             description = str(row.get('Omschrijving', '')).strip()
             if not date_str or not description:
                 continue
@@ -166,11 +198,12 @@ class TransactionProcessor:
             transactions.append({
                 'date': date_str,
                 'description': description,
-                'amount': amount,
+                'amount': amount if bij_af == 'Bij' else -amount,
+                'direction': bij_af,
                 'raw_text': description
             })
 
-        print(f"Gevonden: {len(transactions)} inkomende transacties in tussen-CSV")
+        print(f"Gevonden: {len(transactions)} transacties in tussen-CSV")
         return transactions
     
     def find_member_in_transaction(self, description):
@@ -184,7 +217,8 @@ class TransactionProcessor:
         
         return None
     
-    def process_transactions(self, output_path=None, extracted_csv_path=None):
+    def process_transactions(self, output_path=None, extracted_csv_path=None,
+                             include_negative=False, r_as_savings=False):
         """Verwerk alle transacties via tussen-CSV en match met leden."""
         # Laad leden
         self.load_members()
@@ -193,10 +227,15 @@ class TransactionProcessor:
             extracted_csv_path = self.get_intermediate_csv_path(output_path)
 
         # Stap 1: PDF naar tussen-CSV
-        self.extract_from_text(extracted_csv_path)
+        if Path(self.pdf_path).suffix.lower() == ".csv":
+            extracted_csv_path = self.pdf_path
+        else:
+            self.extract_from_text(extracted_csv_path)
 
         # Stap 2: Tussen-CSV naar intern formaat
-        transactions = self.load_transactions_from_csv(extracted_csv_path)
+        transactions = self.load_transactions_from_csv(
+            extracted_csv_path, include_negative=include_negative
+        )
         
         # Bepaal maand/jaar voor document naam op basis van transactiedata
         if transactions:
@@ -226,6 +265,18 @@ class TransactionProcessor:
         for trans in transactions:
             member = self.find_member_in_transaction(trans['description'])
             
+            if trans['direction'] == 'Af':
+                results.append({
+                    'Datum': trans['date'],
+                    'Doc': '',
+                    'Beschrijving': f"AF: {trans['description']}",
+                    'Debit Rek': '',
+                    'Credit Rek': '1020',
+                    'Bedrag': f"{trans['amount']:.2f}".replace('.', ','),
+                    'kp1': '',
+                })
+                continue
+
             if member:
                 # Parse datum
                 date_str = trans['date'].replace('-', '/')
@@ -233,23 +284,29 @@ class TransactionProcessor:
                 banana_status = member['banana_status']
                 voornaam = member['voornaam']
                 
-                if banana_status.startswith('S'):
+                if banana_status.startswith('S') or (
+                    r_as_savings and banana_status.startswith('R')
+                ):
                     # Sparen
                     beschrijving = f"Sparen {voornaam}"
-                    debit_rek = "1020"
-                    credit_rek = "1125"
+                    member_rek = "1125"
                     member_id = member.get('id') or ''
                     kp1 = f"S{member_id}".strip()
                 elif banana_status.startswith('R'):
                     # Regesbijdrage
                     beschrijving = f"Regesbijdrage {voornaam}"
-                    debit_rek = "1020"
-                    credit_rek = "2500"
+                    member_rek = "2500"
                     kp1 = ""
                 else:
                     # Onbekende status, skip
                     continue
                 
+                if trans['direction'] == 'Bij':
+                    debit_rek, credit_rek = "1020", member_rek
+                else:
+                    # Uitgaande betalingen boeken terug vanaf het lid naar kas/bank.
+                    debit_rek, credit_rek = member_rek, "1020"
+
                 results.append({
                     'Datum': date_str,
                     'Doc': doc_name,
@@ -288,41 +345,60 @@ class TransactionProcessor:
         return True
     
     def export_to_csv(self, output_path):
-        """Exporteer resultaten naar CSV (tab-separated voor compatibiliteit)"""
+        """Exporteer een bank-CSV met dezelfde kolommen als de SNS-export."""
         if not self.transactions:
             print("Geen transacties om te exporteren!")
             return False
         
-        df = pd.DataFrame(self.transactions)
-        
-        # Sorteer op datum
-        df['Datum_sort'] = pd.to_datetime(df['Datum'], format='%d/%m/%Y')
-        df = df.sort_values('Datum_sort')
-        df = df.drop('Datum_sort', axis=1)
         # Zorg dat map bestaat en extensie klopt
         dir_name = os.path.dirname(output_path)
         if dir_name:
             os.makedirs(dir_name, exist_ok=True)
         if not (output_path.lower().endswith('.csv') or output_path.lower().endswith('.tsv')):
             output_path = f"{output_path}.csv"
-        # Exporteer naar CSV met tab separator
-        df.to_csv(output_path, index=False, sep='\t', encoding='utf-8')
+        rows = []
+        for transaction in self.transactions:
+            amount = str(transaction["Bedrag"]).replace(",", ".")
+            if transaction["Credit Rek"] == "1020" and not amount.startswith("-"):
+                amount = f"-{amount}"
+            rows.append([
+                transaction["Datum"].replace("/", "-"), "", "", "", "", "", "",
+                "EUR", "", "EUR", amount, transaction["Datum"].replace("/", "-"),
+                transaction["Datum"].replace("/", "-"), "", "", "", "",
+                transaction["Beschrijving"], "", "",
+            ])
+        pd.DataFrame(rows, columns=BANK_COLUMNS).to_csv(
+            output_path, index=False, encoding="utf-8"
+        )
         print(f"CSV bestand aangemaakt: {output_path}")
         return True
 
 
 def main():
     """Hoofdfunctie voor standalone gebruik"""
-    if len(sys.argv) < 2:
-        print("Gebruik: python generate_transactions.py <pdf_path> [csv_path] [output_path]")
-        print("\nStandaard waarden:")
-        print(f"  csv_path: {DEFAULT_CSV_PAD}")
-        print("  output_path: transacties_output.xlsx")
-        return
-    
-    pdf_path = sys.argv[1]
-    csv_path = sys.argv[2] if len(sys.argv) > 2 else get_csv_path()
-    output_path = sys.argv[3] if len(sys.argv) > 3 else "transacties_output.xlsx"
+    parser = argparse.ArgumentParser(
+        description="Converteer een bankafschrift naar een transactie-Excelbestand."
+    )
+    parser.add_argument("pdf_path", help="PDF of CSV van het bankafschrift")
+    parser.add_argument("csv_path", nargs="?", default=None,
+                        help="Ledenadministratie CSV (optioneel)")
+    parser.add_argument("output_path", nargs="?", default="transacties_output.xlsx",
+                        help="Naam van het uitvoerbestand")
+    parser.add_argument(
+        "--include-negative", action="store_true",
+        help="Neem ook 'Af'-transacties op; deze krijgen crediteur 1020."
+    )
+    parser.add_argument(
+        "--r-as-savings", action="store_true",
+        help="Boek inkomende transacties van leden met status R als sparen."
+    )
+    args = parser.parse_args()
+
+    pdf_path = args.pdf_path
+    csv_path = args.csv_path or get_csv_path()
+    output_path = args.output_path
+    if output_path == "transacties_output.xlsx":
+        output_path = str(EXPORT_DIR / output_path)
     
     # Controleer of bestanden bestaan
     if not os.path.exists(pdf_path):
@@ -335,7 +411,11 @@ def main():
     
     # Verwerk transacties
     processor = TransactionProcessor(pdf_path, csv_path)
-    results = processor.process_transactions(output_path=output_path)
+    results = processor.process_transactions(
+        output_path=output_path,
+        include_negative=args.include_negative,
+        r_as_savings=args.r_as_savings,
+    )
     
     if results:
         # Exporteer naar beide formaten; laat export functies extensies bepalen

@@ -2,6 +2,13 @@ import sys
 from bs4 import BeautifulSoup
 import re
 import os
+from pathlib import Path
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+if str(BASE_DIR) not in sys.path:
+    sys.path.insert(0, str(BASE_DIR))
+
+from app_paths import EXPORT_DIR
 
 # Bestand inlezen
 # with open("boekhouding 24-25.html", "r", encoding="utf-8") as f:
@@ -99,7 +106,11 @@ if soup.head.style:
     soup.head.style.replace_with(BeautifulSoup(custom_css, "html.parser"))
 
 # Output folder
-os.makedirs("rekeningen_split", exist_ok=True)
+output_folder = Path(os.environ.get(
+    "QUAEGE_EXPORT_DIR",
+    EXPORT_DIR,
+)) / "rekeningen_split"
+output_folder.mkdir(parents=True, exist_ok=True)
 
 # Zoek alle tabellen met id=Table_AccountCard_...
 tables = soup.find_all("table", id=re.compile(r"^Table_AccountCard_"))
@@ -122,7 +133,7 @@ for table in tables:
 </body></html>"""
 
     # Opslaan
-    bestand_naam = f"rekeningen_split/Rekening_{rekening_code}.html"
+    bestand_naam = output_folder / f"Rekening_{rekening_code}.html"
     with open(bestand_naam, "w", encoding="utf-8") as f_out:
         f_out.write(sub_html)
 
