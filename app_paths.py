@@ -2,6 +2,7 @@
 
 import os
 import sys
+import shutil
 from pathlib import Path
 
 APP_NAME = "quaege-bot"
@@ -21,6 +22,13 @@ SETTINGS_PATH = CONFIG_DIR / "settings.json"
 def ensure_directories():
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     EXPORT_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def ensure_user_config(template_path: Path):
+    """Create the editable user config on first launch."""
+    ensure_directories()
+    if not USER_CONFIG_PATH.exists():
+        shutil.copyfile(template_path, USER_CONFIG_PATH)
 
 
 def path_from_environment(name: str, default: Path) -> Path:

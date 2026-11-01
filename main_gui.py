@@ -8,7 +8,10 @@ import re
 import csv
 import shutil
 from pathlib import Path
-from app_paths import EXPORT_DIR, SETTINGS_PATH, USER_CONFIG_PATH, ensure_directories
+from app_paths import (
+    EXPORT_DIR, SETTINGS_PATH, USER_CONFIG_PATH, ensure_directories,
+    ensure_user_config,
+)
 
 # ---- Paths ----
 # When frozen with PyInstaller, use the executable's directory
@@ -48,6 +51,7 @@ DEFAULT_SETTINGS = {
     "eigen_email": "",
     "include_negative_transactions": False,
     "include_r_recipients": False,
+    "r_as_savings": False,
     "selected_recipients": [],
     "smtp_sender": "",
     "smtp_password": "",
@@ -56,6 +60,7 @@ DEFAULT_SETTINGS = {
 # ---- Load / Save JSON helper ----
 def load_settings():
     ensure_directories()
+    ensure_user_config(Path(BASE_DIR) / "config.py")
     if not os.path.exists(SETTINGS_JSON):
         return DEFAULT_SETTINGS.copy()
     with open(SETTINGS_JSON, "r", encoding="utf-8") as f:
@@ -173,6 +178,14 @@ class ScriptRunnerApp:
                     text="Ook negatieve ('Af') transacties",
                     variable=tool["negative_var"],
                 ).pack(side="left", padx=12)
+                tool["r_savings_var"] = tk.BooleanVar(
+                    value=self.settings.get("r_as_savings", False)
+                )
+                ttk.Checkbutton(
+                    frame,
+                    text="Inkomend van R als sparen",
+                    variable=tool["r_savings_var"],
+                ).pack(side="left", padx=12)
 
             ttk.Button(frame, text="Uitvoeren", style="Accent.TButton",
                        command=lambda t=tool: self.run_script(t)).pack(side="right", padx=5)
@@ -252,6 +265,8 @@ class ScriptRunnerApp:
             args.append(text_input)
         if tool["script"] == "generate_transactions.py" and tool["negative_var"].get():
             args.append("--include-negative")
+        if tool["script"] == "generate_transactions.py" and tool["r_savings_var"].get():
+            args.append("--r-as-savings")
 
         try:
             environment = os.environ.copy()
@@ -554,6 +569,7 @@ class ScriptRunnerApp:
         )
         if transaction_tool:
             self.settings["include_negative_transactions"] = transaction_tool["negative_var"].get()
+            self.settings["r_as_savings"] = transaction_tool["r_savings_var"].get()
         if hasattr(self, "recipient_vars"):
             self.settings["selected_recipients"] = [
                 number or email

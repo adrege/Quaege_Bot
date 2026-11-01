@@ -72,9 +72,17 @@ BETAAL_LINK = ""
 # inside the installation directory.
 try:
     from app_paths import USER_CONFIG_PATH
-    if USER_CONFIG_PATH.exists() and USER_CONFIG_PATH.resolve() != Path(__file__).resolve():
-        with USER_CONFIG_PATH.open(encoding="utf-8") as user_config:
-            exec(compile(user_config.read(), str(USER_CONFIG_PATH), "exec"), globals())
+    if (
+        USER_CONFIG_PATH.exists()
+        and USER_CONFIG_PATH.resolve() != Path(__file__).resolve()
+        and not os.environ.get("QUAEGE_LOADING_USER_CONFIG")
+    ):
+        os.environ["QUAEGE_LOADING_USER_CONFIG"] = "1"
+        try:
+            with USER_CONFIG_PATH.open(encoding="utf-8") as user_config:
+                exec(compile(user_config.read(), str(USER_CONFIG_PATH), "exec"), globals())
+        finally:
+            os.environ.pop("QUAEGE_LOADING_USER_CONFIG", None)
 except (OSError, SyntaxError) as error:
     print(f"Warning: user configuration could not be loaded: {error}")
 

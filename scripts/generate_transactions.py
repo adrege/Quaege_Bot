@@ -158,14 +158,14 @@ class TransactionProcessor:
     def load_transactions_from_csv(self, extracted_csv_path, include_negative=False):
         """Laad tussen-CSV en zet inkomende en optioneel uitgaande transacties om."""
         transactions = []
-        df = pd.read_csv(extracted_csv_path, dtype=str).fillna("")
+        df = pd.read_csv(extracted_csv_path, dtype=str, sep=None, engine="python").fillna("")
 
         for _, row in df.iterrows():
             direction_column = str(row.get('Bij/Af', '')).strip()
             amount_column = str(row.get('Bedrag bij / af', '')).strip()
             if amount_column:
                 try:
-                    signed_amount = float(amount_column.replace(".", "").replace(",", "."))
+                    signed_amount = self._normalize_amount(amount_column)
                 except ValueError:
                     signed_amount = 0
                 bij_af = "Af" if signed_amount < 0 else "Bij"
@@ -218,7 +218,7 @@ class TransactionProcessor:
         return None
     
     def process_transactions(self, output_path=None, extracted_csv_path=None,
-                             include_negative=False):
+                             include_negative=False, r_as_savings=False):
         """Verwerk alle transacties via tussen-CSV en match met leden."""
         # Laad leden
         self.load_members()
@@ -265,6 +265,18 @@ class TransactionProcessor:
         for trans in transactions:
             member = self.find_member_in_transaction(trans['description'])
             
+            if trans['direction'] == 'Af':
+                results.append({
+                    'Datum': trans['date'],
+                    'Doc': '',
+                    'Beschrijving': f"AF: {trans['description']}",
+                    'Debit Rek': '',
+                    'Credit Rek': '1020',
+                    'Bedrag': f"{trans['amount']:.2f}".replace('.', ','),
+                    'kp1': '',
+                })
+                continue
+
             if member:
                 # Parse datum
                 date_str = trans['date'].replace('-', '/')
@@ -272,7 +284,9 @@ class TransactionProcessor:
                 banana_status = member['banana_status']
                 voornaam = member['voornaam']
                 
-                if banana_status.startswith('S'):
+                if banana_status.startswith('S') or (
+                    r_as_savings and banana_status.startswith('R')
+                ):
                     # Sparen
                     beschrijving = f"Sparen {voornaam}"
                     member_rek = "1125"
@@ -331,25 +345,31 @@ class TransactionProcessor:
         return True
     
     def export_to_csv(self, output_path):
-        """Exporteer resultaten naar CSV (tab-separated voor compatibiliteit)"""
+        """Exporteer een bank-CSV met dezelfde kolommen als de SNS-export."""
         if not self.transactions:
             print("Geen transacties om te exporteren!")
             return False
         
-        df = pd.DataFrame(self.transactions)
-        
-        # Sorteer op datum
-        df['Datum_sort'] = pd.to_datetime(df['Datum'], format='%d/%m/%Y')
-        df = df.sort_values('Datum_sort')
-        df = df.drop('Datum_sort', axis=1)
         # Zorg dat map bestaat en extensie klopt
         dir_name = os.path.dirname(output_path)
         if dir_name:
             os.makedirs(dir_name, exist_ok=True)
         if not (output_path.lower().endswith('.csv') or output_path.lower().endswith('.tsv')):
             output_path = f"{output_path}.csv"
-        # Exporteer naar CSV met tab separator
-        df.to_csv(output_path, index=False, sep='\t', encoding='utf-8')
+        rows = []
+        for transaction in self.transactions:
+            amount = str(transaction["Bedrag"]).replace(",", ".")
+            if transaction["Credit Rek"] == "1020" and not amount.startswith("-"):
+                amount = f"-{amount}"
+            rows.append([
+                transaction["Datum"].replace("/", "-"), "", "", "", "", "", "",
+                "EUR", "", "EUR", amount, transaction["Datum"].replace("/", "-"),
+                transaction["Datum"].replace("/", "-"), "", "", "", "",
+                transaction["Beschrijving"], "", "",
+            ])
+        pd.DataFrame(rows, columns=BANK_COLUMNS).to_csv(
+            output_path, index=False, encoding="utf-8"
+        )
         print(f"CSV bestand aangemaakt: {output_path}")
         return True
 
@@ -367,6 +387,10 @@ def main():
     parser.add_argument(
         "--include-negative", action="store_true",
         help="Neem ook 'Af'-transacties op; deze krijgen crediteur 1020."
+    )
+    parser.add_argument(
+        "--r-as-savings", action="store_true",
+        help="Boek inkomende transacties van leden met status R als sparen."
     )
     args = parser.parse_args()
 
@@ -390,6 +414,7 @@ def main():
     results = processor.process_transactions(
         output_path=output_path,
         include_negative=args.include_negative,
+        r_as_savings=args.r_as_savings,
     )
     
     if results:
