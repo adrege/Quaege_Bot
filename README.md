@@ -124,6 +124,16 @@ chmod +x build_linux.sh
 
 The package is written to `dist/rpm/` and installs the `quaege-bot` launcher and desktop entry.
 
+### Automatic GitHub releases
+
+When a pull request is merged into `main`, GitHub Actions builds both packages and creates
+a release containing:
+
+- `Quaege_Bot-windows.zip`
+- the Fedora/RPM package produced by `build_linux.sh`
+
+The same Windows workflow can still be run manually or from a `v*` tag.
+
 The installed application keeps writable files outside `/opt`:
 
 - Settings and SMTP configuration: `~/.config/quaege-bot/`
