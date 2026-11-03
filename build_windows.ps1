@@ -64,12 +64,19 @@ if (Test-Path ".\config.py") {
     Write-Host "  - WARNING: config.py not found in project root!" -ForegroundColor Red
 }
 
-# Always copy Adrege_logo.png to dist folder
+# Keep the compact logo for the application icon.
 if (Test-Path ".\Adrege_logo.png") {
     Copy-Item -Force ".\Adrege_logo.png" $distFolder
     Write-Host "  - Copied Adrege_logo.png" -ForegroundColor Green
 } else {
     Write-Host "  - WARNING: Adrege_logo.png not found in project root!" -ForegroundColor Red
+}
+
+if (Test-Path ".\Adrege_logo_lang.png") {
+    Copy-Item -Force ".\Adrege_logo_lang.png" $distFolder
+    Write-Host "  - Copied Adrege_logo_lang.png" -ForegroundColor Green
+} else {
+    Write-Host "  - WARNING: Adrege_logo_lang.png not found in project root!" -ForegroundColor Red
 }
 
 # Ensure settings.json exists in dist
@@ -108,6 +115,7 @@ Write-Host "  - Stuur_saldo_updates.exe  (Tool executable)" -ForegroundColor Gra
 Write-Host "  - config.py                (Configuration file)" -ForegroundColor Gray
 Write-Host "  - settings.json            (User settings)" -ForegroundColor Gray
 Write-Host "  - Adrege_logo.png          (Logo image)" -ForegroundColor Gray
+Write-Host "  - Adrege_logo_lang.png     (Email signature logo)" -ForegroundColor Gray
 Write-Host ""
 Write-Host "To distribute:"
 Write-Host "  1. Zip the entire 'Quaege_Bot' folder"

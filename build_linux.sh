@@ -16,21 +16,32 @@ PYINSTALLER_EXCLUDES=(
     --exclude-module PySide6
 )
 
+BUILD_DIR="${ROOT_DIR}/build"
+DIST_DIR="${ROOT_DIR}/dist"
+SPEC_DIR="${ROOT_DIR}/.pyinstaller-specs"
+rm -rf "$BUILD_DIR" "$DIST_DIR" "$SPEC_DIR"
+mkdir -p "$SPEC_DIR"
+trap 'rm -rf "$SPEC_DIR"' EXIT
+
 python3 -m PyInstaller --noconfirm --clean --onedir --name Quaege_Bot \
     "${PYINSTALLER_EXCLUDES[@]}" \
-    --add-data "scripts:scripts" \
-    --add-data "Adrege_logo.png:." \
-    --add-data "config.py:." \
-    --add-data "settings.json:." \
+    --specpath "$SPEC_DIR" \
+    --add-data "${ROOT_DIR}/scripts:scripts" \
+    --add-data "${ROOT_DIR}/Adrege_logo.png:." \
+    --add-data "${ROOT_DIR}/Adrege_logo_lang.png:." \
+    --add-data "${ROOT_DIR}/config.py:." \
+    --add-data "${ROOT_DIR}/settings.json:." \
     main_gui.py
 
 for script in scripts/*.py; do
     name="$(basename "$script" .py)"
     python3 -m PyInstaller --noconfirm --clean --onefile \
         "${PYINSTALLER_EXCLUDES[@]}" \
-        --name "$name" --distpath dist/Quaege_Bot \
-        --add-data "Adrege_logo.png:." \
-        --add-data "settings.json:." \
+        --specpath "$SPEC_DIR" \
+        --name "$name" --distpath "$DIST_DIR/Quaege_Bot" \
+        --add-data "${ROOT_DIR}/Adrege_logo.png:." \
+        --add-data "${ROOT_DIR}/Adrege_logo_lang.png:." \
+        --add-data "${ROOT_DIR}/settings.json:." \
         "$script"
 done
 

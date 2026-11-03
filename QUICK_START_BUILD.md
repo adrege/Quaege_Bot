@@ -52,6 +52,7 @@ Quaege_Bot/
 ├── config.py
 ├── settings.json
 ├── Adrege_logo.png
+├── Adrege_logo_lang.png
 └── [DLL files and dependencies]
 ```
 
@@ -127,6 +128,7 @@ To make this work, I updated:
 - [ ] All dependencies installed? (`pip install pandas openpyxl beautifulsoup4 pypdf pyinstaller`)
 - [ ] `config.py` configured with email settings?
 - [ ] `Adrege_logo.png` exists?
+- [ ] `Adrege_logo_lang.png` exists for email signatures?
 - [ ] Run `.\build_windows.ps1`
 - [ ] Check `dist\Quaege_Bot\` folder
 - [ ] Test `Quaege_Tools.exe` works!

@@ -17,6 +17,7 @@ A collection of automated tools for managing Adrege's financial administration a
 - **Integrated tools** for common Quaege tasks
 - **Configuration management** via GUI (no code editing needed)
 - **Dry-run mode** for email operations with confirmation dialogs
+- **Network timeouts** for email operations so a failed SMTP/IMAP connection cannot hang indefinitely
 - **Optional negative transaction export** with correct reversal accounts and credit account `1020`
 - **Recipient manager** with status-S selection, optional status-R recipients, and manual multi-selection
 - **Linux/Fedora packaging** through a native `.rpm` build
@@ -59,6 +60,12 @@ A collection of automated tools for managing Adrege's financial administration a
    - Add payment link
    - Enter your email for test messages
 5. **Use the tools** from the Scripts tab
+
+In the **Settings** tab you can also change the greeting and the name shown in
+the e-mail signature. This is intended to be updated when a new Quaege takes
+over; editing `config.py` is not necessary. The complete signature contact
+details can be changed there as well: role, telephone number, e-mail address,
+bank account number and account holder.
 
 ### For Developers
 
@@ -158,6 +165,13 @@ The GUI creates and manages this file automatically. Contains:
     "betaal_link": "https://your-payment-link",
     "text": "Custom message text",
     "eigen_email": "your-email@adrege.nl",
+    "signature_greeting": "Met Stormende groet,",
+    "signature_name": "Naam van de Quaege",
+    "signature_role": "Quaegé der Demosdispuut Adregé",
+    "signature_phone": "",
+    "signature_email": "quaege@adrege.nl",
+    "signature_bank_account": "NL02 SNSB 8846 2041 82",
+    "signature_account_holder": "",
     "include_negative_transactions": false,
     "include_r_recipients": false,
     "selected_recipients": []
@@ -166,7 +180,9 @@ The GUI creates and manages this file automatically. Contains:
 
 ### Config File (`config.py`)
 
-Contains email template, SMTP settings, and logo configuration. Edit directly for:
+Contains the email template, SMTP settings, and logo configuration. The
+greeting and Quaege name should normally be changed through the GUI Settings
+tab instead of editing this file directly. Edit directly only for:
 - Email HTML template
 - SMTP server settings
 - Logo path
@@ -183,7 +199,8 @@ Quaege_Bot/
 ├── main_gui.py                  # Main GUI application
 ├── config.py                    # Email config & templates
 ├── settings.json                # User settings (generated)
-├── Adrege_logo.png             # Logo for emails
+├── Adrege_logo.png             # Compact application/window icon
+├── Adrege_logo_lang.png        # Long logo in the email signature
 ├── build_windows.ps1           # Build script
 ├── build_windows.spec          # PyInstaller configuration
 ├── README.md                   # This file
@@ -278,7 +295,7 @@ python scripts/Stuur_saldo_updates.py  # Actually send
 **Frozen exe doesn't work:**
 - Ensure all files are extracted together
 - Check Windows Defender/antivirus settings
-- Verify `config.py` and `Adrege_logo.png` are present
+- Verify `config.py`, `Adrege_logo.png`, and `Adrege_logo_lang.png` are present
 
 ---
 

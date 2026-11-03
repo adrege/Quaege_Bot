@@ -10,6 +10,7 @@ from email.mime.application import MIMEApplication
 import sys
 import argparse
 import json
+import traceback
 from pathlib import Path
 
 # Pad naar HTML-bestanden en CSV
@@ -53,6 +54,7 @@ def get_betaal_link():
 SMTP_SERVER = 'mail.antagonist.nl'
 SMTP_PORT = 465
 IMAP_FOLDER = 'INBOX.Sent'
+NETWORK_TIMEOUT_SECONDS = 30
 
 def lees_csv(pad):
     with open(pad, newline='', encoding='utf-8') as f:
@@ -80,19 +82,44 @@ def stuur_mail(ontvanger_email, onderwerp, html_bericht, bijlage_pad):
         msg.attach(attachment)
     
     # Verstuur e-mail
+    print(
+        f"SMTP: verbinden met {SMTP_SERVER}:{SMTP_PORT} "
+        f"als {config.sender_email}...",
+        flush=True,
+    )
     try:
-        with smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT) as server:
+        with smtplib.SMTP_SSL(
+            SMTP_SERVER, SMTP_PORT, timeout=NETWORK_TIMEOUT_SECONDS
+        ) as server:
+            print("SMTP: verbinding gemaakt, aanmelden...", flush=True)
             server.login(config.sender_email, config.password)
+            print("SMTP: aangemeld, e-mail verzenden...", flush=True)
             server.send_message(msg)
-            print(f"E-mail verzonden naar {ontvanger_email}")
+            print(f"SMTP: e-mail verzonden naar {ontvanger_email}", flush=True)
+    except Exception as error:
+        print(f"SMTP FOUT ({type(error).__name__}): {error}", flush=True)
+        traceback.print_exc()
+        return
 
-        with imaplib.IMAP4_SSL(SMTP_SERVER) as imap:
+    print(f"IMAP: kopie opslaan in map {IMAP_FOLDER}...", flush=True)
+    try:
+        with imaplib.IMAP4_SSL(
+            SMTP_SERVER, timeout=NETWORK_TIMEOUT_SECONDS
+        ) as imap:
+            print("IMAP: verbinding gemaakt, aanmelden...", flush=True)
             imap.login(config.sender_email, config.password)
-            imap.append(IMAP_FOLDER, '', imaplib.Time2Internaldate(time.time()), msg.as_bytes())
-            print(f"Kopie opgeslagen in Verzonden map voor {ontvanger_email}")
-
-    except Exception as e:
-        print(f"Fout bij {ontvanger_email}: {e}")
+            print("IMAP: aangemeld, kopie opslaan...", flush=True)
+            imap.append(
+                IMAP_FOLDER, "", imaplib.Time2Internaldate(time.time()), msg.as_bytes()
+            )
+            print(f"IMAP: kopie opgeslagen voor {ontvanger_email}", flush=True)
+    except Exception as error:
+        print(
+            f"IMAP FOUT ({type(error).__name__}): {error}. "
+            "De e-mail kan al wel via SMTP verzonden zijn.",
+            flush=True,
+        )
+        traceback.print_exc()
 
 def hoofdprogramma(dry_run=False):
     csv_pad = get_csv_path()
