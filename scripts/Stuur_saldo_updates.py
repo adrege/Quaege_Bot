@@ -1,6 +1,7 @@
 import csv
 import os
 import smtplib
+import ssl
 import imaplib
 import time
 from email.mime.multipart import MIMEMultipart
@@ -57,6 +58,36 @@ SMTP_PORT = 465
 IMAP_FOLDER = 'INBOX.Sent'
 NETWORK_TIMEOUT_SECONDS = 30
 
+
+def _send_smtp(message):
+    authenticated = False
+    try:
+        with smtplib.SMTP_SSL(
+            SMTP_SERVER, SMTP_PORT, timeout=NETWORK_TIMEOUT_SECONDS
+        ) as server:
+            print("SMTP: verbinding gemaakt, aanmelden...", flush=True)
+            server.login(config.sender_email, config.password)
+            authenticated = True
+            print("SMTP: aangemeld, e-mail verzenden...", flush=True)
+            server.send_message(message)
+    except smtplib.SMTPServerDisconnected:
+        if authenticated:
+            raise
+        print(
+            "SMTP: SSL-authenticatieverbinding gesloten; probeer "
+            "STARTTLS op poort 587...",
+            flush=True,
+        )
+        with smtplib.SMTP(
+            SMTP_SERVER, 587, timeout=NETWORK_TIMEOUT_SECONDS
+        ) as server:
+            server.ehlo()
+            server.starttls(context=ssl.create_default_context())
+            server.ehlo()
+            server.login(config.sender_email, config.password)
+            print("SMTP: aangemeld via STARTTLS, e-mail verzenden...", flush=True)
+            server.send_message(message)
+
 def lees_csv(pad):
     with open(pad, newline='', encoding='utf-8') as f:
         reader = csv.DictReader(f)
@@ -89,14 +120,8 @@ def stuur_mail(ontvanger_email, onderwerp, html_bericht, bijlage_pad):
         flush=True,
     )
     try:
-        with smtplib.SMTP_SSL(
-            SMTP_SERVER, SMTP_PORT, timeout=NETWORK_TIMEOUT_SECONDS
-        ) as server:
-            print("SMTP: verbinding gemaakt, aanmelden...", flush=True)
-            server.login(config.sender_email, config.password)
-            print("SMTP: aangemeld, e-mail verzenden...", flush=True)
-            server.send_message(msg)
-            print(f"SMTP: e-mail verzonden naar {ontvanger_email}", flush=True)
+        _send_smtp(msg)
+        print(f"SMTP: e-mail verzonden naar {ontvanger_email}", flush=True)
     except Exception as error:
         print(f"SMTP FOUT ({type(error).__name__}): {error}", flush=True)
         traceback.print_exc()
