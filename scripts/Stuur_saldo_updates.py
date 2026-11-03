@@ -16,7 +16,6 @@ from pathlib import Path
 # Pad naar HTML-bestanden en CSV
 # Use absolute paths so the script can be run from anywhere
 BASE_DIR = Path(__file__).resolve().parent.parent
-HTML_MAP = str(Path(os.environ.get("QUAEGE_EXPORT_DIR", EXPORT_DIR)) / "rekeningen_split")
 DEFAULT_CSV_PAD = str(Path(__file__).resolve().parent / "Ledenadministratie - Leden.csv")
 # Ensure we can import the top-level config.py when running from the scripts folder
 
@@ -25,6 +24,8 @@ if str(BASE_DIR) not in sys.path:
 
 import config
 from app_paths import EXPORT_DIR, SETTINGS_PATH
+
+HTML_MAP = str(Path(os.environ.get("QUAEGE_EXPORT_DIR", EXPORT_DIR)) / "rekeningen_split")
 
 def get_csv_path():
     csv_from_config = getattr(config, "CSV_PAD", None)
@@ -121,7 +122,7 @@ def stuur_mail(ontvanger_email, onderwerp, html_bericht, bijlage_pad):
         )
         traceback.print_exc()
 
-def hoofdprogramma(dry_run=False):
+def hoofdprogramma(dry_run=False, auto_confirm=False):
     csv_pad = get_csv_path()
     leden = lees_csv(csv_pad)
     betaal_link = get_betaal_link()
@@ -188,7 +189,7 @@ def hoofdprogramma(dry_run=False):
         print(f"{idx}. {info['voornaam']} - {info['email']} (bestand: {info['bestand']})")
     print("="*60 + "\n")
 
-    if not _confirmed_to_send():
+    if not _confirmed_to_send(auto_confirm=auto_confirm):
         print("Verzenden geannuleerd.")
         return
 
@@ -200,19 +201,28 @@ def hoofdprogramma(dry_run=False):
         volledige_html = config.get_html_email(dynamische_tekst + rekening_html)
         stuur_mail(info["email"], onderwerp, volledige_html, info["pad"])
 
-def _confirmed_to_send() -> bool:
+def _confirmed_to_send(auto_confirm: bool = False) -> bool:
+    if auto_confirm:
+        return True
+
     try:
         if not sys.stdin or not sys.stdin.isatty():
             print("Non-interactive omgeving gedetecteerd (waarschijnlijk via GUI); bevestiging wordt overgeslagen.")
             return True
-    except Exception:
-        print("Kan stdin niet lezen; ga ervan uit dat bevestiging ok is.")
-        return True
-    bevestiging = input("Weet je zeker dat je een mail wilt sturen naar het hele dispuut? (y/N): ").strip().lower()
-    return bevestiging == "y"
+    except (AttributeError, OSError):
+        print("Kan stdin niet lezen; verzenden geannuleerd.")
+        return False
+
+    try:
+        bevestiging = input("Weet je zeker dat je een mail wilt sturen naar het hele dispuut? (y/N): ")
+    except EOFError:
+        print("Geen bevestiging ontvangen; verzenden geannuleerd.")
+        return False
+    return bevestiging.strip().lower() == "y"
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Stuur saldo updates naar geselecteerde leden")
     parser.add_argument("--dry-run", action="store_true", help="Toon wat er gestuurd zou worden zonder te verzenden")
+    parser.add_argument("--yes", action="store_true", help="Bevestig verzenden (voor GUI-aanroepen)")
     args = parser.parse_args()
-    hoofdprogramma(dry_run=args.dry_run)
+    hoofdprogramma(dry_run=args.dry_run, auto_confirm=args.yes)

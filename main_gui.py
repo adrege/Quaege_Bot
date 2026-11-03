@@ -320,6 +320,9 @@ class ScriptRunnerApp:
                     self.log_box.insert(tk.END, "\nVerzenden geannuleerd door gebruiker.\n", "output")
                     self.log_box.see(tk.END)
                     return
+                # The child executable is a console-less process under Wine. Pass
+                # the GUI's confirmation explicitly instead of relying on stdin.
+                args.append("--yes")
 
             # Run the actual script
             process_timeout = 300 if is_bulk_mail else 120

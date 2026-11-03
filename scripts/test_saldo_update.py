@@ -123,22 +123,28 @@ def _get_betaal_link():
     return fallback
 
 
-def _confirmed_to_send() -> bool:
+def _confirmed_to_send(auto_confirm: bool = False) -> bool:
     """Return True if we should send the email. In non-interactive (GUI) mode, auto-confirm."""
+    if auto_confirm:
+        return True
+
     try:
         if not sys.stdin or not sys.stdin.isatty():
             print("Non-interactive environment detected (likely launched from GUI); skipping confirmation and sending.")
             return True
-    except Exception:
-        # If checking isatty fails, be safe and proceed (GUI case)
-        print("Unable to read from stdin; assuming non-interactive and sending.")
-        return True
+    except (AttributeError, OSError):
+        print("Unable to inspect stdin; cancelling send for safety.")
+        return False
 
-    bevestiging = input("Weet je zeker dat je deze testmail wilt verzenden? (y/N): ").strip().lower()
-    return bevestiging == "y"
+    try:
+        bevestiging = input("Weet je zeker dat je deze testmail wilt verzenden? (y/N): ")
+    except EOFError:
+        print("Geen bevestiging ontvangen; verzenden geannuleerd.")
+        return False
+    return bevestiging.strip().lower() == "y"
 
 
-def main(dry_run: bool = False):
+def main(dry_run: bool = False, auto_confirm: bool = False):
     csv_pad = get_csv_path()
     leden = lees_csv(csv_pad)
     betaal_link = _get_betaal_link()
@@ -178,7 +184,7 @@ def main(dry_run: bool = False):
 
     print(f"Verstuur testmail naar {config.test_email} met bestand {bestand}")
 
-    if not _confirmed_to_send():
+    if not _confirmed_to_send(auto_confirm=auto_confirm):
         print("Verzenden geannuleerd.")
         return
 
@@ -187,5 +193,6 @@ def main(dry_run: bool = False):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Stuur test saldo-update e-mail")
     parser.add_argument("--dry-run", action="store_true", help="Toon wat er gestuurd zou worden zonder te verzenden")
+    parser.add_argument("--yes", action="store_true", help="Bevestig verzenden (voor GUI-aanroepen)")
     args = parser.parse_args()
-    main(dry_run=args.dry_run)
+    main(dry_run=args.dry_run, auto_confirm=args.yes)
