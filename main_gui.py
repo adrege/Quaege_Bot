@@ -55,6 +55,13 @@ DEFAULT_SETTINGS = {
     "selected_recipients": [],
     "smtp_sender": "",
     "smtp_password": "",
+    "signature_greeting": "Met Stormende groet,",
+    "signature_name": "",
+    "signature_role": "Quaegé der Demosdispuut Adregé",
+    "signature_phone": "",
+    "signature_email": "quaege@adrege.nl",
+    "signature_bank_account": "NL02 SNSB 8846 2041 82",
+    "signature_account_holder": "",
 }
 
 # ---- Load / Save JSON helper ----
@@ -109,7 +116,7 @@ class ScriptRunnerApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Quaege Bot")
-        self.root.geometry("980x680")
+        self.root.geometry("1200x1000")
         self.root.minsize(820, 560)
         self._configure_style()
 
@@ -164,7 +171,7 @@ class ScriptRunnerApp:
 
             if tool["needs_file"]:
                 ttk.Button(frame, text="Bestand kiezen", command=lambda t=tool: self.select_file(t)).pack(side="left", padx=5)
-                ttk.Label(frame, textvariable=tool["file_var"], width=52, anchor="w").pack(side="left", padx=5)
+                ttk.Label(frame, textvariable=tool["file_var"], width=20, anchor="w").pack(side="left", padx=5)
 
             if tool["needs_text"]:
                 ttk.Entry(frame, textvariable=tool["text_var"], width=30).pack(side="left", padx=5)
@@ -280,10 +287,17 @@ class ScriptRunnerApp:
             if is_test_mail or is_bulk_mail:
                 dry_run_args = args + ["--dry-run"]
                 # Set cwd to BASE_DIR so scripts find resources
-                preview = subprocess.run(
-                    dry_run_args, capture_output=True, text=True,
-                    cwd=BASE_DIR, env=environment,
-                )
+                try:
+                    preview = subprocess.run(
+                        dry_run_args, capture_output=True, text=True,
+                        cwd=BASE_DIR, env=environment, timeout=60,
+                    )
+                except subprocess.TimeoutExpired:
+                    messagebox.showerror(
+                        "Dry-run mislukt",
+                        "De voorbeeldberekening duurde langer dan 60 seconden.",
+                    )
+                    return
                 preview_output = (preview.stdout or "").strip()
                 preview_error = (preview.stderr or "").strip()
                 # Show preview in log
@@ -308,9 +322,34 @@ class ScriptRunnerApp:
                     return
 
             # Run the actual script
-            result = subprocess.run(
-                args, capture_output=True, text=True, cwd=BASE_DIR, env=environment
-            )
+            process_timeout = 300 if is_bulk_mail else 120
+            try:
+                result = subprocess.run(
+                    args, capture_output=True, text=True, cwd=BASE_DIR,
+                    env=environment, timeout=process_timeout,
+                )
+            except subprocess.TimeoutExpired as timeout_error:
+                message = (
+                    f"Het uitvoeren duurde langer dan {process_timeout} seconden "
+                    "en is afgebroken. De laatste uitvoer:"
+                )
+                partial_output = timeout_error.stdout or ""
+                partial_error = timeout_error.stderr or ""
+                if isinstance(partial_output, bytes):
+                    partial_output = partial_output.decode(errors="replace")
+                if isinstance(partial_error, bytes):
+                    partial_error = partial_error.decode(errors="replace")
+                self.log_box.insert(tk.END, f"\n⚠️ Timeout:\n{message}\n", "error")
+                if partial_output:
+                    self.log_box.insert(tk.END, f"{partial_output}\n", "output")
+                if partial_error:
+                    self.log_box.insert(tk.END, f"⚠️ Foutuitvoer:\n{partial_error}\n", "error")
+                self.log_box.see(tk.END)
+                messagebox.showerror(
+                    "Uitvoering afgebroken",
+                    f"{message}\nZie de uitvoerlog voor de exacte SMTP/IMAP-stap.",
+                )
+                return
             output = result.stdout.strip() or "(no output)"
             error = result.stderr.strip()
             self.log_box.insert(tk.END, f"\n> {tool['name']} executed\n{output}\n", "output")
@@ -357,43 +396,95 @@ class ScriptRunnerApp:
         self.subject_var = tk.StringVar(value=self.settings.get("email_subject", ""))
         ttk.Entry(frm, textvariable=self.subject_var, width=55).grid(row=3, column=1, padx=5, pady=5, sticky="ew")
 
-        #test email
-        ttk.Label(frm, text="Eigen Adrege-e-mailadres (voor testmail):").grid(row=4, column=0, sticky="w", pady=5)
+        ttk.Label(frm, text="Groet in e-mailhandtekening:").grid(row=4, column=0, sticky="w", pady=5)
+        self.signature_greeting_var = tk.StringVar(
+            value=self.settings.get("signature_greeting", "Met Stormende groet,")
+        )
+        ttk.Entry(frm, textvariable=self.signature_greeting_var, width=55).grid(
+            row=4, column=1, padx=5, pady=5, sticky="ew"
+        )
+
+        ttk.Label(frm, text="Naam van de Quaege:").grid(row=5, column=0, sticky="w", pady=5)
+        self.signature_name_var = tk.StringVar(value=self.settings.get("signature_name", ""))
+        ttk.Entry(frm, textvariable=self.signature_name_var, width=55).grid(
+            row=5, column=1, padx=5, pady=5, sticky="ew"
+        )
+
+        ttk.Label(frm, text="Functie/omschrijving:").grid(row=6, column=0, sticky="w", pady=5)
+        self.signature_role_var = tk.StringVar(
+            value=self.settings.get("signature_role", "Quaegé der Demosdispuut Adregé")
+        )
+        ttk.Entry(frm, textvariable=self.signature_role_var, width=55).grid(
+            row=6, column=1, padx=5, pady=5, sticky="ew"
+        )
+
+        ttk.Label(frm, text="Telefoonnummer in handtekening:").grid(row=7, column=0, sticky="w", pady=5)
+        self.signature_phone_var = tk.StringVar(value=self.settings.get("signature_phone", ""))
+        ttk.Entry(frm, textvariable=self.signature_phone_var, width=55).grid(
+            row=7, column=1, padx=5, pady=5, sticky="ew"
+        )
+
+        ttk.Label(frm, text="E-mailadres in handtekening:").grid(row=8, column=0, sticky="w", pady=5)
+        self.signature_email_var = tk.StringVar(
+            value=self.settings.get("signature_email", "quaege@adrege.nl")
+        )
+        ttk.Entry(frm, textvariable=self.signature_email_var, width=55).grid(
+            row=8, column=1, padx=5, pady=5, sticky="ew"
+        )
+
+        ttk.Label(frm, text="Bankrekeningnummer:").grid(row=9, column=0, sticky="w", pady=5)
+        self.signature_bank_account_var = tk.StringVar(
+            value=self.settings.get("signature_bank_account", "NL02 SNSB 8846 2041 82")
+        )
+        ttk.Entry(frm, textvariable=self.signature_bank_account_var, width=55).grid(
+            row=9, column=1, padx=5, pady=5, sticky="ew"
+        )
+
+        ttk.Label(frm, text="Ten name van:").grid(row=10, column=0, sticky="w", pady=5)
+        self.signature_account_holder_var = tk.StringVar(
+            value=self.settings.get("signature_account_holder", "")
+        )
+        ttk.Entry(frm, textvariable=self.signature_account_holder_var, width=55).grid(
+            row=10, column=1, padx=5, pady=5, sticky="ew"
+        )
+
+        # test email
+        ttk.Label(frm, text="Eigen Adrege-e-mailadres (voor testmail):").grid(row=11, column=0, sticky="w", pady=5)
         self.email_var = tk.StringVar(value=self.settings.get("eigen_email", ""))
-        ttk.Entry(frm, textvariable=self.email_var, width=55).grid(row=4, column=1, padx=5, pady=5, sticky="ew")
+        ttk.Entry(frm, textvariable=self.email_var, width=55).grid(row=11, column=1, padx=5, pady=5, sticky="ew")
 
         self.include_r_var = tk.BooleanVar(value=self.settings.get("include_r_recipients", False))
         ttk.Checkbutton(
             frm, text="Status R meenemen als er geen handmatige selectie is",
             variable=self.include_r_var,
-        ).grid(row=5, column=1, sticky="w", padx=5, pady=8)
+        ).grid(row=12, column=1, sticky="w", padx=5, pady=8)
 
-        ttk.Label(frm, text="SMTP-gebruikersnaam:").grid(row=6, column=0, sticky="w", pady=5)
+        ttk.Label(frm, text="SMTP-gebruikersnaam:").grid(row=13, column=0, sticky="w", pady=5)
         self.smtp_sender_var = tk.StringVar(value=self.settings.get("smtp_sender", ""))
         ttk.Entry(frm, textvariable=self.smtp_sender_var, width=55).grid(
-            row=6, column=1, padx=5, pady=5, sticky="ew"
+            row=13, column=1, padx=5, pady=5, sticky="ew"
         )
-        ttk.Label(frm, text="SMTP-wachtwoord:").grid(row=7, column=0, sticky="w", pady=5)
+        ttk.Label(frm, text="SMTP-wachtwoord:").grid(row=14, column=0, sticky="w", pady=5)
         self.smtp_password_var = tk.StringVar(value=self.settings.get("smtp_password", ""))
         ttk.Entry(frm, textvariable=self.smtp_password_var, show="*", width=55).grid(
-            row=7, column=1, padx=5, pady=5, sticky="ew"
+            row=14, column=1, padx=5, pady=5, sticky="ew"
         )
         ttk.Label(
             frm,
             text=f"Bestanden: {EXPORT_DIR}\nConfiguratie: {USER_CONFIG_PATH}",
             style="Subtitle.TLabel",
-        ).grid(row=8, column=1, sticky="w", padx=5, pady=8)
+        ).grid(row=15, column=1, sticky="w", padx=5, pady=8)
         ttk.Button(frm, text="Open exportmap", command=lambda: self.open_path(EXPORT_DIR)).grid(
-            row=8, column=2, sticky="w"
+            row=15, column=2, sticky="w"
         )
         ttk.Button(frm, text="Open configuratiemap",
                    command=lambda: self.open_path(USER_CONFIG_PATH.parent)).grid(
-            row=9, column=2, sticky="w"
+            row=16, column=2, sticky="w"
         )
 
         save_btn = ttk.Button(frm, text="Instellingen opslaan", style="Accent.TButton",
                               command=self.save_all_settings)
-        save_btn.grid(row=10, column=0, pady=15, sticky="e")
+        save_btn.grid(row=17, column=0, pady=15, sticky="e")
 
     # --- Recipients Tab ---
     def create_recipients_tab(self):
@@ -554,12 +645,26 @@ class ScriptRunnerApp:
         new_text = self.text_box.get("1.0", "end").strip()
         new_subject = self.subject_var.get().strip()
         new_email = self.email_var.get().strip()
+        new_signature_greeting = self.signature_greeting_var.get().strip()
+        new_signature_name = self.signature_name_var.get().strip()
+        new_signature_role = self.signature_role_var.get().strip()
+        new_signature_phone = self.signature_phone_var.get().strip()
+        new_signature_email = self.signature_email_var.get().strip()
+        new_signature_bank_account = self.signature_bank_account_var.get().strip()
+        new_signature_account_holder = self.signature_account_holder_var.get().strip()
 
         self.settings["csv_path"] = new_csv
         self.settings["betaal_link"] = new_link
         self.settings["text"] = new_text
         self.settings["email_subject"] = new_subject
         self.settings["eigen_email"] = new_email
+        self.settings["signature_greeting"] = new_signature_greeting
+        self.settings["signature_name"] = new_signature_name
+        self.settings["signature_role"] = new_signature_role
+        self.settings["signature_phone"] = new_signature_phone
+        self.settings["signature_email"] = new_signature_email
+        self.settings["signature_bank_account"] = new_signature_bank_account
+        self.settings["signature_account_holder"] = new_signature_account_holder
         self.settings["include_r_recipients"] = self.include_r_var.get()
         self.settings["smtp_sender"] = self.smtp_sender_var.get().strip()
         self.settings["smtp_password"] = self.smtp_password_var.get()
@@ -583,6 +688,13 @@ class ScriptRunnerApp:
         update_config_variable("TEXT_NOTE", new_text)
         update_config_variable("EMAIL_SUBJECT", new_subject)
         update_config_variable("test_email", new_email)
+        update_config_variable("SIGNATURE_GREETING", new_signature_greeting)
+        update_config_variable("SIGNATURE_NAME", new_signature_name)
+        update_config_variable("SIGNATURE_ROLE", new_signature_role)
+        update_config_variable("SIGNATURE_PHONE", new_signature_phone)
+        update_config_variable("SIGNATURE_EMAIL", new_signature_email)
+        update_config_variable("SIGNATURE_BANK_ACCOUNT", new_signature_bank_account)
+        update_config_variable("SIGNATURE_ACCOUNT_HOLDER", new_signature_account_holder)
         update_config_variable("sender_email", self.settings["smtp_sender"])
         update_config_variable("password", self.settings["smtp_password"])
         self.refresh_recipients()

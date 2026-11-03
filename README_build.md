@@ -70,7 +70,8 @@ dist\Quaege_Bot\
 ├── Stuur_saldo_updates.exe    ← Tool: Send bulk emails
 ├── config.py                  ← Email template & settings
 ├── settings.json              ← User-configurable settings
-├── Adrege_logo.png           ← Logo image
+├── Adrege_logo.png           ← Compact application/window icon
+├── Adrege_logo_lang.png      ← Long logo for email signatures
 ├── rekeningen_split\          ← HTML templates folder
 └── [Various DLLs and dependencies]
 ```
@@ -120,7 +121,8 @@ Users should:
 ### Critical Files
 - **config.py**: Email template, SMTP settings, logo path
 - **settings.json**: User-configurable paths and settings (CSV, payment link, etc.)
-- **Adrege_logo.png**: Logo embedded in emails
+- **Adrege_logo.png**: Compact logo used by the application and desktop entry
+- **Adrege_logo_lang.png**: Long logo embedded at the end of emails
 
 ### Why These Files?
 - The GUI reads/writes `settings.json` for user preferences

@@ -17,6 +17,7 @@ block_cipher = None
 # Common data files to include
 datas = [
     ('Adrege_logo.png', '.'),
+    ('Adrege_logo_lang.png', '.'),
     ('config.py', '.'),
     ('settings.json', '.'),
 ]

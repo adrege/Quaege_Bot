@@ -15,6 +15,8 @@ a = Analysis(
     binaries=[],
     datas=[
         ('config.py', '.'),
+        ('Adrege_logo.png', '.'),
+        ('Adrege_logo_lang.png', '.'),
         ('scripts/*.py', 'scripts'),
         ('rekeningen_split/*.html', 'rekeningen_split'),
     ],

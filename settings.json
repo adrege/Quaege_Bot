@@ -3,5 +3,12 @@
     "text": "Stukje tekst dat in de email moet komen te staan",
     "betaal_link": "",
     "eigen_email": "flo@adrege.nl",
-    "email_subject": "Hoi Flo"
+    "email_subject": "Hoi Flo",
+    "signature_greeting": "Met Stormende groet,",
+    "signature_name": "",
+    "signature_role": "Quaegé der Demosdispuut Adregé",
+    "signature_phone": "",
+    "signature_email": "quaege@adrege.nl",
+    "signature_bank_account": "NL02 SNSB 8846 2041 82",
+    "signature_account_holder": ""
 }

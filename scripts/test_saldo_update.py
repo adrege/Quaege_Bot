@@ -9,6 +9,7 @@ import smtplib
 import argparse
 import imaplib
 import time
+import traceback
 
 # Ensure we can import the top-level config.py when running from the scripts folder
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -40,6 +41,7 @@ def get_csv_path():
 SMTP_SERVER = 'mail.antagonist.nl'
 SMTP_PORT = 465
 IMAP_FOLDER = 'INBOX.Sent'
+NETWORK_TIMEOUT_SECONDS = 30
 
 def lees_csv(pad):
     with open(pad, newline='', encoding='utf-8') as f:
@@ -66,19 +68,47 @@ def stuur_mail(ontvanger_email, onderwerp, html_bericht, bijlage_pad):
         attachment.add_header('Content-Disposition', 'attachment', filename=os.path.basename(bijlage_pad))
         msg.attach(attachment)
 
+    print(
+        f"SMTP: verbinden met {SMTP_SERVER}:{SMTP_PORT} "
+        f"als {config.sender_email}...",
+        flush=True,
+    )
     try:
-        with smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT) as server:
+        with smtplib.SMTP_SSL(
+            SMTP_SERVER, SMTP_PORT, timeout=NETWORK_TIMEOUT_SECONDS
+        ) as server:
+            print("SMTP: verbinding gemaakt, aanmelden...", flush=True)
             server.login(config.sender_email, config.password)
+            print("SMTP: aangemeld, e-mail verzenden...", flush=True)
             server.send_message(msg)
-            print(f"Testmail verzonden naar {ontvanger_email}")
+            print(f"SMTP: testmail verzonden naar {ontvanger_email}", flush=True)
+    except Exception as error:
+        print(
+            f"SMTP FOUT ({type(error).__name__}): {error}",
+            flush=True,
+        )
+        traceback.print_exc()
+        return
 
-        with imaplib.IMAP4_SSL(SMTP_SERVER) as imap:
+    print(f"IMAP: kopie opslaan in map {IMAP_FOLDER}...", flush=True)
+    try:
+        with imaplib.IMAP4_SSL(
+            SMTP_SERVER, timeout=NETWORK_TIMEOUT_SECONDS
+        ) as imap:
+            print("IMAP: verbinding gemaakt, aanmelden...", flush=True)
             imap.login(config.sender_email, config.password)
-            imap.append(IMAP_FOLDER, '', imaplib.Time2Internaldate(time.time()), msg.as_bytes())
-            print(f"Testmail opgeslagen in Verzonden map")
-
-    except Exception as e:
-        print(f"❌ Fout bij verzenden testmail: {e}")
+            print("IMAP: aangemeld, kopie opslaan...", flush=True)
+            imap.append(
+                IMAP_FOLDER, "", imaplib.Time2Internaldate(time.time()), msg.as_bytes()
+            )
+            print("IMAP: testmail opgeslagen in Verzonden map", flush=True)
+    except Exception as error:
+        print(
+            f"IMAP FOUT ({type(error).__name__}): {error}. "
+            "De e-mail kan al wel via SMTP verzonden zijn.",
+            flush=True,
+        )
+        traceback.print_exc()
 
 def _get_betaal_link():
     """Resolve betaal link. Prefer config.BETAAL_LINK (GUI writes this), then config.betaal_link, else fallback."""
