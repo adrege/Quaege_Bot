@@ -76,7 +76,8 @@ jobs:
           RELEASE_TAG: release-${{ github.event.pull_request.merge_commit_sha }}
           RELEASE_TITLE: Quaege Bot release ${{ github.event.pull_request.merge_commit_sha }}
         run: |
-          gh release create "$RELEASE_TAG" release-assets/* \
+          mapfile -t release_files < <(find release-assets -type f)
+          gh release create "$RELEASE_TAG" "${release_files[@]}" \
             --repo "$GITHUB_REPOSITORY" \
             --target "${{ github.event.pull_request.merge_commit_sha }}" \
             --title "$RELEASE_TITLE" \
