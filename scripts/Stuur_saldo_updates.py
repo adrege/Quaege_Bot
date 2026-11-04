@@ -13,18 +13,18 @@ import json
 import traceback
 from pathlib import Path
 
-# Pad naar HTML-bestanden en CSV
-# Use absolute paths so the script can be run from anywhere
-BASE_DIR = Path(__file__).resolve().parent.parent
-HTML_MAP = str(Path(os.environ.get("QUAEGE_EXPORT_DIR", EXPORT_DIR)) / "rekeningen_split")
-DEFAULT_CSV_PAD = str(Path(__file__).resolve().parent / "Ledenadministratie - Leden.csv")
 # Ensure we can import the top-level config.py when running from the scripts folder
-
+BASE_DIR = Path(__file__).resolve().parent.parent
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
 import config
 from app_paths import EXPORT_DIR, SETTINGS_PATH
+
+# Pad naar HTML-bestanden en CSV
+# Use absolute paths so the script can be run from anywhere
+HTML_MAP = str(Path(os.environ.get("QUAEGE_EXPORT_DIR", EXPORT_DIR)) / "rekeningen_split")
+DEFAULT_CSV_PAD = str(Path(__file__).resolve().parent / "Ledenadministratie - Leden.csv")
 
 def get_csv_path():
     csv_from_config = getattr(config, "CSV_PAD", None)
@@ -72,7 +72,7 @@ def stuur_mail(ontvanger_email, onderwerp, html_bericht, bijlage_pad):
 
     msg_alt = MIMEMultipart('alternative')
     msg.attach(msg_alt)
-    msg_alt.attach(MIMEText(html_bericht, 'html'))
+    msg_alt.attach(MIMEText(html_bericht, 'html', 'utf-8'))
 
     msg = config.attach_logo(msg)
     # Voeg bijlage toe
