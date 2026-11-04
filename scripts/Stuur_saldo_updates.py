@@ -60,14 +60,21 @@ NETWORK_TIMEOUT_SECONDS = 30
 
 
 def _send_smtp(message):
-    authenticated = False
+    def authenticate(server):
+        server.ehlo()
+        mechanisms = server.esmtp_features.get("auth", "").upper().split()
+        print(f"SMTP: beschikbare authenticatie: {', '.join(mechanisms) or '(onbekend)'}", flush=True)
+        if "LOGIN" in mechanisms:
+            server.auth("LOGIN", server.auth_login, initial_response_ok=False)
+        else:
+            server.login(config.sender_email, config.password)
+
     try:
         with smtplib.SMTP_SSL(
             SMTP_SERVER, SMTP_PORT, timeout=NETWORK_TIMEOUT_SECONDS
         ) as server:
             print("SMTP: verbinding gemaakt, aanmelden...", flush=True)
-            server.login(config.sender_email, config.password)
-            authenticated = True
+            authenticate(server)
             print("SMTP: aangemeld, e-mail verzenden...", flush=True)
             server.send_message(message)
     except smtplib.SMTPServerDisconnected:
@@ -81,10 +88,8 @@ def _send_smtp(message):
         with smtplib.SMTP(
             SMTP_SERVER, 587, timeout=NETWORK_TIMEOUT_SECONDS
         ) as server:
-            server.ehlo()
             server.starttls(context=ssl.create_default_context())
-            server.ehlo()
-            server.login(config.sender_email, config.password)
+            authenticate(server)
             print("SMTP: aangemeld via STARTTLS, e-mail verzenden...", flush=True)
             server.send_message(message)
 
